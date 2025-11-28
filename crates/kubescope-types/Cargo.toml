@@ -1,0 +1,12 @@
+[package]
+name = "kubescope-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared types for kubescope"
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ratatui.workspace = true

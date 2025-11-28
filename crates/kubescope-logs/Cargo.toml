@@ -1,0 +1,20 @@
+[package]
+name = "kubescope-logs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Log processing for kubescope"
+
+[dependencies]
+kubescope-types.workspace = true
+kubescope-k8s.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+regex.workspace = true
+parking_lot.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+tracing.workspace = true
+kube.workspace = true
+k8s-openapi.workspace = true

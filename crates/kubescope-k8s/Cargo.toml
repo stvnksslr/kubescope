@@ -1,0 +1,15 @@
+[package]
+name = "kubescope-k8s"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Kubernetes client for kubescope"
+
+[dependencies]
+kubescope-types.workspace = true
+kube.workspace = true
+k8s-openapi.workspace = true
+tokio.workspace = true
+futures.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
