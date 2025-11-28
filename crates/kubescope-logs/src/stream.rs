@@ -42,6 +42,7 @@ impl LogStreamManager {
         pods: &[PodInfo],
         log_tx: mpsc::UnboundedSender<LogEntry>,
         tail_lines: Option<i64>,
+        since_seconds: Option<i64>,
     ) {
         let pods_api: Api<Pod> = Api::namespaced(client, namespace);
 
@@ -58,6 +59,7 @@ impl LogStreamManager {
                 pod.containers.first().map(|c| c.name.clone()),
                 log_tx.clone(),
                 tail_lines,
+                since_seconds,
             );
             self.tasks.push(task);
         }
@@ -70,6 +72,7 @@ impl LogStreamManager {
         container: Option<String>,
         log_tx: mpsc::UnboundedSender<LogEntry>,
         tail_lines: Option<i64>,
+        since_seconds: Option<i64>,
     ) -> tokio::task::JoinHandle<()> {
         let cancel = self.cancel.clone();
         let line_counters = Arc::clone(&self.line_counters);
@@ -78,7 +81,9 @@ impl LogStreamManager {
             let params = LogParams {
                 follow: true,
                 container,
-                tail_lines,
+                // Use since_seconds if provided, otherwise use tail_lines
+                tail_lines: if since_seconds.is_some() { None } else { tail_lines },
+                since_seconds,
                 timestamps: true,
                 ..Default::default()
             };

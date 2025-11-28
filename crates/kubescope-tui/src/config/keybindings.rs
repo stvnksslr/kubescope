@@ -83,18 +83,31 @@ impl KeyBindings {
         list_nav.insert(KeyBinding::new(KeyCode::Char('/')), Action::OpenSearch);
         bindings.insert(KeyContext::ListNavigation, list_nav);
 
-        // Log viewer bindings
+        // Log viewer bindings - less-like navigation
         let mut log_viewer = HashMap::new();
+        // Line navigation
         log_viewer.insert(KeyBinding::new(KeyCode::Char('j')), Action::ScrollDown(1));
         log_viewer.insert(KeyBinding::new(KeyCode::Down), Action::ScrollDown(1));
+        log_viewer.insert(KeyBinding::new(KeyCode::Enter), Action::ScrollDown(1));
         log_viewer.insert(KeyBinding::new(KeyCode::Char('k')), Action::ScrollUp(1));
         log_viewer.insert(KeyBinding::new(KeyCode::Up), Action::ScrollUp(1));
+        // Page navigation (less-style)
+        log_viewer.insert(KeyBinding::ctrl(KeyCode::Char('f')), Action::PageDown);
+        log_viewer.insert(KeyBinding::ctrl(KeyCode::Char('b')), Action::PageUp);
         log_viewer.insert(KeyBinding::ctrl(KeyCode::Char('d')), Action::PageDown);
         log_viewer.insert(KeyBinding::ctrl(KeyCode::Char('u')), Action::PageUp);
+        log_viewer.insert(KeyBinding::new(KeyCode::PageDown), Action::PageDown);
+        log_viewer.insert(KeyBinding::new(KeyCode::PageUp), Action::PageUp);
+        // Top/bottom navigation (less-style)
         log_viewer.insert(KeyBinding::new(KeyCode::Char('g')), Action::ScrollToTop);
         log_viewer.insert(KeyBinding::shift(KeyCode::Char('G')), Action::ScrollToBottom);
+        log_viewer.insert(KeyBinding::shift(KeyCode::Char('<')), Action::ScrollToTop);
+        log_viewer.insert(KeyBinding::shift(KeyCode::Char('>')), Action::ScrollToBottom);
+        log_viewer.insert(KeyBinding::new(KeyCode::Home), Action::ScrollToTop);
+        log_viewer.insert(KeyBinding::new(KeyCode::End), Action::ScrollToBottom);
         log_viewer.insert(KeyBinding::new(KeyCode::Char('f')), Action::ToggleAutoScroll);
         log_viewer.insert(KeyBinding::new(KeyCode::Char('t')), Action::ToggleTimestamps);
+        log_viewer.insert(KeyBinding::shift(KeyCode::Char('T')), Action::ToggleLocalTime);
         log_viewer.insert(KeyBinding::new(KeyCode::Char('p')), Action::TogglePodNames);
         log_viewer.insert(KeyBinding::shift(KeyCode::Char('J')), Action::ToggleJsonPrettyPrint);
         log_viewer.insert(KeyBinding::new(KeyCode::Char('c')), Action::ClearLogs);
@@ -104,6 +117,8 @@ impl KeyBindings {
         log_viewer.insert(KeyBinding::new(KeyCode::Char('s')), Action::ToggleStats);
         log_viewer.insert(KeyBinding::new(KeyCode::Char('e')), Action::ExportLogs);
         log_viewer.insert(KeyBinding::shift(KeyCode::Char('K')), Action::ToggleJsonKeyFilter);
+        log_viewer.insert(KeyBinding::new(KeyCode::Char('r')), Action::CycleTimeRange);
+        log_viewer.insert(KeyBinding::shift(KeyCode::Char('R')), Action::CycleTimeRangeBack);
         bindings.insert(KeyContext::LogViewer, log_viewer);
 
         // JSON key filter bindings

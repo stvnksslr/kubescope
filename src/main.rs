@@ -20,6 +20,18 @@ use kubescope_tui::{
 #[command(name = "kubescope")]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// Kubernetes context name (optional, will prompt if not provided)
+    #[arg(value_name = "CONTEXT")]
+    context: Option<String>,
+
+    /// Namespace (optional, requires context)
+    #[arg(value_name = "NAMESPACE")]
+    namespace: Option<String>,
+
+    /// Deployment name (optional, requires context and namespace)
+    #[arg(value_name = "DEPLOYMENT")]
+    deployment: Option<String>,
+
     /// Buffer size for log entries
     #[arg(long, default_value = "10000")]
     buffer_size: usize,
@@ -63,6 +75,7 @@ enum InternalAction {
     PodsLoaded(Vec<PodInfo>),
     StartLogStreaming,
     StopLogStreaming,
+    RestartLogStreaming,
     Error(String),
 }
 
@@ -98,6 +111,87 @@ async fn run_app(args: Args) -> Result<()> {
     // Command palette
     let mut palette_state = CommandPaletteState::default();
     let commands = log_viewer_commands();
+
+    // Handle CLI arguments for direct navigation
+    if let Some(context_name) = &args.context {
+        // Validate context exists
+        if !state.contexts.iter().any(|c| &c.name == context_name) {
+            anyhow::bail!("Context '{}' not found in kubeconfig", context_name);
+        }
+
+        // Connect to context and load namespaces
+        let client = kube_client.client_for_context(context_name).await?;
+        let namespaces = kube_client.get_namespaces(&client).await?;
+
+        state.selected_context = Some(context_name.clone());
+        state.namespaces = namespaces;
+        active_client = Some(client.clone());
+
+        if let Some(namespace_name) = &args.namespace {
+            // Validate namespace exists
+            if !state.namespaces.iter().any(|n| &n.name == namespace_name) {
+                anyhow::bail!(
+                    "Namespace '{}' not found in context '{}'",
+                    namespace_name,
+                    context_name
+                );
+            }
+
+            // Load deployments
+            let deployments = kube_client.get_deployments(&client, namespace_name).await?;
+            state.selected_namespace = Some(namespace_name.clone());
+            state.deployments = deployments;
+            state.screen_stack.push(Screen::ContextSelect);
+
+            if let Some(deployment_name) = &args.deployment {
+                // Validate deployment exists
+                let deployment = state
+                    .deployments
+                    .iter()
+                    .find(|d| &d.name == deployment_name)
+                    .cloned();
+
+                if let Some(deployment) = deployment {
+                    // Load pods and go directly to log viewer
+                    let pods = kube_client
+                        .get_pods_for_deployment(&client, namespace_name, &deployment)
+                        .await?;
+
+                    state.selected_deployment = Some(deployment_name.clone());
+                    state.pods = pods;
+                    state.screen_stack.push(Screen::NamespaceSelect);
+                    state.screen_stack.push(Screen::DeploymentSelect);
+                    state.current_screen = Screen::LogViewer;
+
+                    // Start log streaming
+                    log_buffer.clear();
+                    let since_seconds = state.ui_state.time_range.as_seconds();
+                    stream_manager.start_streams(
+                        client,
+                        namespace_name,
+                        &state.pods,
+                        log_tx.clone(),
+                        Some(args.tail_lines),
+                        since_seconds,
+                    );
+                } else {
+                    anyhow::bail!(
+                        "Deployment '{}' not found in namespace '{}'",
+                        deployment_name,
+                        namespace_name
+                    );
+                }
+            } else {
+                // Go to deployment select
+                state.screen_stack.push(Screen::NamespaceSelect);
+                state.current_screen = Screen::DeploymentSelect;
+            }
+        } else {
+            // Go to namespace select
+            state.screen_stack.push(Screen::ContextSelect);
+            state.current_screen = Screen::NamespaceSelect;
+        }
+    }
 
     // Initial render
     render(&mut tui, &mut state, &log_buffer, &mut palette_state, &commands)?;
@@ -243,6 +337,8 @@ async fn run_app(args: Args) -> Result<()> {
                                 // Reset scroll and enable auto-scroll
                                 state.ui_state.log_scroll = 0;
                                 state.ui_state.auto_scroll = true;
+                                // Get time range
+                                let since_seconds = state.ui_state.time_range.as_seconds();
                                 // Start streaming
                                 stream_manager.start_streams(
                                     client.clone(),
@@ -250,6 +346,31 @@ async fn run_app(args: Args) -> Result<()> {
                                     &state.pods,
                                     log_tx.clone(),
                                     Some(args.tail_lines),
+                                    since_seconds,
+                                );
+                            }
+                        }
+                    }
+
+                    InternalAction::RestartLogStreaming => {
+                        if let Some(client) = &active_client {
+                            if let Some(namespace) = &state.selected_namespace {
+                                // Stop current streams
+                                stream_manager.stop();
+                                // Clear logs for fresh start with new time range
+                                log_buffer.clear();
+                                state.ui_state.log_scroll = 0;
+                                state.ui_state.auto_scroll = true;
+                                // Get time range
+                                let since_seconds = state.ui_state.time_range.as_seconds();
+                                // Restart streaming with new time range
+                                stream_manager.start_streams(
+                                    client.clone(),
+                                    namespace,
+                                    &state.pods,
+                                    log_tx.clone(),
+                                    Some(args.tail_lines),
+                                    since_seconds,
                                 );
                             }
                         }
@@ -358,8 +479,8 @@ fn handle_action(
         }
         Action::ScrollDown(n) => {
             state.ui_state.auto_scroll = false;
-            let max_scroll = log_buffer.len().saturating_sub(20); // Approximate visible height
-            state.ui_state.log_scroll = (state.ui_state.log_scroll + n).min(max_scroll);
+            // Don't cap here - let render_logs clamp to the actual filtered count
+            state.ui_state.log_scroll = state.ui_state.log_scroll.saturating_add(n);
         }
         Action::PageUp => {
             state.ui_state.auto_scroll = false;
@@ -367,21 +488,26 @@ fn handle_action(
         }
         Action::PageDown => {
             state.ui_state.auto_scroll = false;
-            let max_scroll = log_buffer.len().saturating_sub(20);
-            state.ui_state.log_scroll = (state.ui_state.log_scroll + 20).min(max_scroll);
+            // Don't cap here - let render_logs clamp to the actual filtered count
+            state.ui_state.log_scroll = state.ui_state.log_scroll.saturating_add(20);
         }
         Action::ScrollToTop => {
             state.ui_state.auto_scroll = false;
             state.ui_state.log_scroll = 0;
         }
         Action::ScrollToBottom => {
-            state.ui_state.auto_scroll = true;
+            state.ui_state.auto_scroll = false;
+            // Set to max value - render_logs will clamp to actual bottom
+            state.ui_state.log_scroll = usize::MAX;
         }
         Action::ToggleAutoScroll => {
             state.ui_state.auto_scroll = !state.ui_state.auto_scroll;
         }
         Action::ToggleTimestamps => {
             state.ui_state.show_timestamps = !state.ui_state.show_timestamps;
+        }
+        Action::ToggleLocalTime => {
+            state.ui_state.use_local_time = !state.ui_state.use_local_time;
         }
         Action::TogglePodNames => {
             state.ui_state.show_pod_names = !state.ui_state.show_pod_names;
@@ -408,6 +534,19 @@ fn handle_action(
                 Err(e) => {
                     state.show_error(format!("Export failed: {}", e));
                 }
+            }
+        }
+
+        Action::CycleTimeRange => {
+            state.ui_state.time_range = state.ui_state.time_range.next();
+            if state.current_screen == Screen::LogViewer {
+                let _ = internal_tx.send(InternalAction::RestartLogStreaming);
+            }
+        }
+        Action::CycleTimeRangeBack => {
+            state.ui_state.time_range = state.ui_state.time_range.prev();
+            if state.current_screen == Screen::LogViewer {
+                let _ = internal_tx.send(InternalAction::RestartLogStreaming);
             }
         }
 

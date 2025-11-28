@@ -56,6 +56,7 @@ pub enum Action {
     PageDown,
     ToggleAutoScroll,
     ToggleTimestamps,
+    ToggleLocalTime,
     TogglePodNames,
     ToggleJsonPrettyPrint,
     ToggleStats,
@@ -71,6 +72,10 @@ pub enum Action {
     JsonKeySelectPattern,
     ClearLogs,
     ExportLogs,
+
+    // Time range
+    CycleTimeRange,
+    CycleTimeRangeBack,
 
     // Error handling
     ShowError(String),

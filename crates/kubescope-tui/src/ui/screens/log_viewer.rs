@@ -1,3 +1,4 @@
+use chrono::Local;
 use ratatui::{
     layout::{Constraint, Direction, Layout as RatatuiLayout, Rect},
     style::{Color, Modifier, Style},
@@ -70,6 +71,7 @@ impl LogViewerScreen {
         let namespace = state.selected_namespace.as_deref().unwrap_or("?");
         let deployment = state.selected_deployment.as_deref().unwrap_or("?");
         let pod_count = state.pods.len();
+        let time_range = state.ui_state.time_range.label();
 
         let title = Line::from(vec![
             Span::styled("kubescope", Theme::title()),
@@ -81,6 +83,11 @@ impl LogViewerScreen {
             Span::styled(deployment, Theme::text_highlight()),
             Span::styled(" │ ", Theme::text_dim()),
             Span::styled(format!("{} pods", pod_count), Theme::text()),
+            Span::styled(" │ ", Theme::text_dim()),
+            Span::styled(
+                format!("⏱ {}", time_range),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
         ]);
 
         let header = Paragraph::new(title).block(
@@ -236,9 +243,11 @@ impl LogViewerScreen {
                 .begin_symbol(Some("▲"))
                 .end_symbol(Some("▼"));
 
-            let mut scrollbar_state = ScrollbarState::new(total_logs)
-                .position(state.ui_state.log_scroll)
-                .viewport_content_length(inner_height);
+            // Calculate scrollbar position as percentage of scrollable range
+            let scroll_position = state.ui_state.log_scroll.min(max_scroll);
+            let mut scrollbar_state = ScrollbarState::default()
+                .content_length(max_scroll)
+                .position(scroll_position);
 
             frame.render_stateful_widget(
                 scrollbar,
@@ -313,8 +322,13 @@ impl LogViewerScreen {
         // Timestamp (if enabled and available)
         if state.ui_state.show_timestamps {
             if let Some(ts) = &entry.timestamp {
+                let time_str = if state.ui_state.use_local_time {
+                    ts.with_timezone(&Local).format("%H:%M:%S").to_string()
+                } else {
+                    ts.format("%H:%M:%S").to_string()
+                };
                 spans.push(Span::styled(
-                    format!(" {}", ts.format("%H:%M:%S")),
+                    format!(" {}", time_str),
                     Theme::text_dim(),
                 ));
             }
@@ -425,6 +439,14 @@ impl LogViewerScreen {
             Span::styled("[", Theme::status_bar()),
             Span::styled("/", Theme::status_bar_key()),
             Span::styled("]Filter ", Theme::status_bar()),
+            Span::styled("[", Theme::status_bar()),
+            Span::styled("r", Theme::status_bar_key()),
+            Span::styled("]", Theme::status_bar()),
+            Span::styled(
+                format!("[{}]", state.ui_state.time_range.label()),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Theme::status_bar()),
             Span::styled("[", Theme::status_bar()),
             Span::styled("e", Theme::status_bar_key()),
             Span::styled("]Export ", Theme::status_bar()),

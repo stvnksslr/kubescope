@@ -1,5 +1,5 @@
 use kubescope_k8s::{ContextInfo, DeploymentInfo, NamespaceInfo, PodInfo};
-use kubescope_logs::CompiledFilter;
+use kubescope_logs::{CompiledFilter, TimeRange};
 use ratatui::widgets::ListState;
 use tokio::sync::mpsc;
 
@@ -79,6 +79,12 @@ pub struct UiState {
 
     /// Scroll offset for key list viewport
     pub json_key_scroll: usize,
+
+    /// Selected time range for log filtering
+    pub time_range: TimeRange,
+
+    /// Show timestamps in local time (vs UTC)
+    pub use_local_time: bool,
 }
 
 impl Default for UiState {
@@ -109,6 +115,10 @@ impl Default for UiState {
             json_key_selection: 0,
             json_key_search: String::new(),
             json_key_scroll: 0,
+            // Time range
+            time_range: TimeRange::default(),
+            // Local time display (default to local time for better UX)
+            use_local_time: true,
         }
     }
 }

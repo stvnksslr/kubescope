@@ -153,6 +153,80 @@ impl ContainerInfo {
 // Log Types
 // ============================================================================
 
+/// Time range for log filtering
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TimeRange {
+    /// Show all available logs (uses tail_lines)
+    #[default]
+    All,
+    /// Last 5 minutes
+    Last5m,
+    /// Last 15 minutes
+    Last15m,
+    /// Last 30 minutes
+    Last30m,
+    /// Last 1 hour
+    Last1h,
+    /// Last 6 hours
+    Last6h,
+    /// Last 24 hours
+    Last24h,
+}
+
+impl TimeRange {
+    /// Get the number of seconds for this time range
+    pub fn as_seconds(&self) -> Option<i64> {
+        match self {
+            Self::All => None,
+            Self::Last5m => Some(5 * 60),
+            Self::Last15m => Some(15 * 60),
+            Self::Last30m => Some(30 * 60),
+            Self::Last1h => Some(60 * 60),
+            Self::Last6h => Some(6 * 60 * 60),
+            Self::Last24h => Some(24 * 60 * 60),
+        }
+    }
+
+    /// Get display label for this time range
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::All => "All",
+            Self::Last5m => "5m",
+            Self::Last15m => "15m",
+            Self::Last30m => "30m",
+            Self::Last1h => "1h",
+            Self::Last6h => "6h",
+            Self::Last24h => "24h",
+        }
+    }
+
+    /// Cycle to the next time range
+    pub fn next(&self) -> Self {
+        match self {
+            Self::All => Self::Last5m,
+            Self::Last5m => Self::Last15m,
+            Self::Last15m => Self::Last30m,
+            Self::Last30m => Self::Last1h,
+            Self::Last1h => Self::Last6h,
+            Self::Last6h => Self::Last24h,
+            Self::Last24h => Self::All,
+        }
+    }
+
+    /// Cycle to the previous time range
+    pub fn prev(&self) -> Self {
+        match self {
+            Self::All => Self::Last24h,
+            Self::Last5m => Self::All,
+            Self::Last15m => Self::Last5m,
+            Self::Last30m => Self::Last15m,
+            Self::Last1h => Self::Last30m,
+            Self::Last6h => Self::Last1h,
+            Self::Last24h => Self::Last6h,
+        }
+    }
+}
+
 /// Log severity level
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum LogLevel {

@@ -13,4 +13,4 @@ pub use parser::LogParser;
 pub use stream::LogStreamManager;
 
 // Re-export types used in our public API
-pub use kubescope_types::{LogEntry, LogLevel};
+pub use kubescope_types::{LogEntry, LogLevel, TimeRange};

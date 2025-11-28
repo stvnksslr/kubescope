@@ -243,6 +243,12 @@ pub fn log_viewer_commands() -> Vec<Command> {
             action: Action::ToggleTimestamps,
         },
         Command {
+            name: "Toggle Local Time",
+            description: "Switch local/UTC time",
+            key_hint: "T",
+            action: Action::ToggleLocalTime,
+        },
+        Command {
             name: "Toggle Pod Names",
             description: "Show/hide pod names",
             key_hint: "p",
@@ -255,10 +261,22 @@ pub fn log_viewer_commands() -> Vec<Command> {
             action: Action::ToggleJsonPrettyPrint,
         },
         Command {
+            name: "JSON Key Filter",
+            description: "Filter by JSON keys",
+            key_hint: "K",
+            action: Action::ToggleJsonKeyFilter,
+        },
+        Command {
             name: "Toggle Stats",
             description: "Show/hide stats bar",
             key_hint: "s",
             action: Action::ToggleStats,
+        },
+        Command {
+            name: "Cycle Time Range",
+            description: "Change log time window",
+            key_hint: "r",
+            action: Action::CycleTimeRange,
         },
         Command {
             name: "Search/Filter",
@@ -271,6 +289,12 @@ pub fn log_viewer_commands() -> Vec<Command> {
             description: "Remove active filter",
             key_hint: "n",
             action: Action::ClearFilter,
+        },
+        Command {
+            name: "Toggle Case Sensitive",
+            description: "Case sensitive search",
+            key_hint: "i",
+            action: Action::ToggleCaseSensitive,
         },
         Command {
             name: "Clear Logs",
