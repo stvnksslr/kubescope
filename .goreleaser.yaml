@@ -25,7 +25,7 @@ archives:
       - none*
     name_template: >-
       {{ .ProjectName }}-{{ .Target }}
-    builds:
+    ids:
       - kubescope
 
 changelog:
