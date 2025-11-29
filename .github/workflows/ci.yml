@@ -21,7 +21,7 @@ jobs:
     name: test
     permissions:
       contents: read
-      checks: write    # Required for test results
+      checks: write   
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
