@@ -36,6 +36,9 @@ kubescope [OPTIONS] [CONTEXT] [NAMESPACE] [DEPLOYMENT]
 |--------|---------|-------------|
 | `--buffer-size` | 10000 | Buffer size for log entries |
 | `--tail-lines` | 100 | Number of historical log lines to fetch per pod |
+| `-e`, `--filter` | | Regex pattern to pre-populate log filter |
+| `-i`, `--ignore-case` | false | Case insensitive filter matching |
+| `-v`, `--invert-match` | false | Invert filter match (show non-matching lines) |
 
 ### Examples
 
@@ -54,6 +57,18 @@ kubescope my-cluster production my-app
 
 # Stream with more history
 kubescope my-cluster production my-app --tail-lines 500
+
+# Filter logs for errors (grep-like syntax)
+kubescope my-cluster production my-app -e "error|exception"
+
+# Case insensitive filter
+kubescope my-cluster production my-app -e "ERROR" -i
+
+# Exclude health check logs
+kubescope my-cluster production my-app -e "health.check" -v
+
+# Combined: case insensitive error filter
+kubescope my-cluster production my-app -e "error" -i
 ```
 
 ## Keybindings

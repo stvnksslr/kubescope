@@ -7,7 +7,7 @@ use clap::Parser;
 use tokio::sync::mpsc;
 
 use kubescope_k8s::{DeploymentInfo, KubeClient, NamespaceInfo, PodInfo};
-use kubescope_logs::{LogBuffer, LogEntry, LogStreamManager};
+use kubescope_logs::{CompiledFilter, LogBuffer, LogEntry, LogStreamManager};
 use kubescope_tui::{
     collect_json_keys, log_viewer_commands, Action, AppState, Command, CommandPalette,
     CommandPaletteState, ContextSelectScreen, DeploymentSelectScreen, Event, EventHandler,
@@ -39,6 +39,18 @@ struct Args {
     /// Number of historical log lines to fetch per pod
     #[arg(long, default_value = "100")]
     tail_lines: i64,
+
+    /// Filter pattern (regex) to pre-populate log filter
+    #[arg(short = 'e', long = "filter")]
+    filter: Option<String>,
+
+    /// Case insensitive filter matching
+    #[arg(short = 'i', long = "ignore-case")]
+    ignore_case: bool,
+
+    /// Invert filter match (show non-matching lines)
+    #[arg(short = 'v', long = "invert-match")]
+    invert_match: bool,
 }
 
 #[tokio::main]
@@ -80,6 +92,18 @@ enum InternalAction {
 }
 
 async fn run_app(args: Args) -> Result<()> {
+    // Validate filter pattern early (before any expensive initialization)
+    if let Some(filter_pattern) = &args.filter {
+        let test_result = if args.ignore_case {
+            CompiledFilter::new_case_insensitive(filter_pattern)
+        } else {
+            CompiledFilter::new(filter_pattern)
+        };
+        if let Err(e) = test_result {
+            anyhow::bail!("Invalid filter pattern '{}': {}", filter_pattern, e);
+        }
+    }
+
     // Create action channels
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (internal_tx, mut internal_rx) = mpsc::unbounded_channel::<InternalAction>();
@@ -191,6 +215,23 @@ async fn run_app(args: Args) -> Result<()> {
             state.screen_stack.push(Screen::ContextSelect);
             state.current_screen = Screen::NamespaceSelect;
         }
+    }
+
+    // Apply CLI filter if provided (already validated at startup)
+    if let Some(filter_pattern) = &args.filter {
+        let mut filter = if args.ignore_case {
+            CompiledFilter::new_case_insensitive(filter_pattern)
+        } else {
+            CompiledFilter::new(filter_pattern)
+        }
+        .expect("Filter pattern was validated at startup");
+
+        if args.invert_match {
+            filter = filter.inverted();
+        }
+        state.ui_state.active_filter = Some(filter);
+        state.ui_state.search_input = filter_pattern.clone();
+        state.ui_state.filter_case_insensitive = args.ignore_case;
     }
 
     // Initial render
