@@ -1,9 +1,11 @@
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use kubescope_k8s::{DeploymentInfo, KubeClient, NamespaceInfo, PodInfo};
@@ -15,47 +17,115 @@ use kubescope_tui::{
     log_viewer_commands,
 };
 
+/// Configuration file structure for .kubescope
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct Config {
+    /// Kubernetes context name
+    context: Option<String>,
+    /// Namespace
+    namespace: Option<String>,
+    /// Deployment name
+    deployment: Option<String>,
+    /// Filter pattern (regex)
+    filter: Option<String>,
+    /// Case insensitive filter matching
+    #[serde(default)]
+    ignore_case: bool,
+    /// Invert filter match
+    #[serde(default)]
+    invert_match: bool,
+    /// Buffer size for log entries
+    buffer_size: Option<usize>,
+    /// Number of historical log lines to fetch per pod
+    tail_lines: Option<i64>,
+}
+
+impl Config {
+    /// Load config from .kubescope file in current directory
+    fn load() -> Option<Self> {
+        let path = PathBuf::from(".kubescope");
+        if path.exists() {
+            let content = std::fs::read_to_string(&path).ok()?;
+            toml::from_str(&content).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Save config to .kubescope file
+    fn save(&self) -> Result<()> {
+        let content = toml::to_string_pretty(self)?;
+        std::fs::write(".kubescope", content)?;
+        Ok(())
+    }
+}
+
 /// Kubescope - A terminal UI for viewing Kubernetes deployment logs
 #[derive(Parser, Debug)]
 #[command(name = "kubescope")]
 #[command(author, version, about, long_about = None)]
-struct Args {
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Kubernetes context name (optional, will prompt if not provided)
-    #[arg(value_name = "CONTEXT")]
+    #[arg(value_name = "CONTEXT", global = true)]
     context: Option<String>,
 
     /// Namespace (optional, requires context)
-    #[arg(value_name = "NAMESPACE")]
+    #[arg(value_name = "NAMESPACE", global = true)]
     namespace: Option<String>,
 
     /// Deployment name (optional, requires context and namespace)
-    #[arg(value_name = "DEPLOYMENT")]
+    #[arg(value_name = "DEPLOYMENT", global = true)]
     deployment: Option<String>,
 
     /// Buffer size for log entries
-    #[arg(long, default_value = "10000")]
+    #[arg(long, default_value = "10000", global = true)]
     buffer_size: usize,
 
     /// Number of historical log lines to fetch per pod
-    #[arg(long, default_value = "100")]
+    #[arg(long, default_value = "100", global = true)]
     tail_lines: i64,
 
     /// Filter pattern (regex) to pre-populate log filter
-    #[arg(short = 'e', long = "filter")]
+    #[arg(short = 'e', long = "filter", global = true)]
     filter: Option<String>,
 
     /// Case insensitive filter matching
-    #[arg(short = 'i', long = "ignore-case")]
+    #[arg(short = 'i', long = "ignore-case", global = true)]
     ignore_case: bool,
 
     /// Invert filter match (show non-matching lines)
-    #[arg(short = 'v', long = "invert-match")]
+    #[arg(short = 'v', long = "invert-match", global = true)]
+    invert_match: bool,
+
+    /// Ignore .kubescope config file
+    #[arg(long, global = true)]
+    no_config: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Initialize a .kubescope configuration file in the current directory
+    Init,
+}
+
+/// Resolved arguments after merging CLI args and config file
+struct Args {
+    context: Option<String>,
+    namespace: Option<String>,
+    deployment: Option<String>,
+    buffer_size: usize,
+    tail_lines: i64,
+    filter: Option<String>,
+    ignore_case: bool,
     invert_match: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = Args::parse();
+    let cli = Cli::parse();
 
     // Initialize tracing for debugging
     tracing_subscriber::fmt()
@@ -66,6 +136,40 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
+    // Handle subcommands
+    if let Some(Commands::Init) = cli.command {
+        return run_init().await;
+    }
+
+    // Load config file if present and not disabled
+    let config = if cli.no_config { None } else { Config::load() };
+
+    // Merge CLI args with config file (CLI takes precedence)
+    let args = Args {
+        context: cli
+            .context
+            .or_else(|| config.as_ref().and_then(|c| c.context.clone())),
+        namespace: cli
+            .namespace
+            .or_else(|| config.as_ref().and_then(|c| c.namespace.clone())),
+        deployment: cli
+            .deployment
+            .or_else(|| config.as_ref().and_then(|c| c.deployment.clone())),
+        buffer_size: config
+            .as_ref()
+            .and_then(|c| c.buffer_size)
+            .unwrap_or(cli.buffer_size),
+        tail_lines: config
+            .as_ref()
+            .and_then(|c| c.tail_lines)
+            .unwrap_or(cli.tail_lines),
+        filter: cli
+            .filter
+            .or_else(|| config.as_ref().and_then(|c| c.filter.clone())),
+        ignore_case: cli.ignore_case || config.as_ref().is_some_and(|c| c.ignore_case),
+        invert_match: cli.invert_match || config.as_ref().is_some_and(|c| c.invert_match),
+    };
+
     // Run the application
     let result = run_app(args).await;
 
@@ -75,6 +179,194 @@ async fn main() -> Result<()> {
     }
 
     result
+}
+
+/// Run the init command to create a .kubescope configuration file
+async fn run_init() -> Result<()> {
+    use std::io::{self, BufRead};
+
+    println!("Initializing .kubescope configuration file...\n");
+
+    // Check if .kubescope already exists
+    if PathBuf::from(".kubescope").exists() {
+        print!("A .kubescope file already exists. Overwrite? [y/N]: ");
+        std::io::Write::flush(&mut io::stdout())?;
+
+        let stdin = io::stdin();
+        let mut line = String::new();
+        stdin.lock().read_line(&mut line)?;
+
+        if !line.trim().eq_ignore_ascii_case("y") {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+
+    // Load kubeconfig to get available contexts
+    let kube_client = KubeClient::new().await?;
+    let contexts = kube_client.get_contexts();
+
+    if contexts.is_empty() {
+        anyhow::bail!("No Kubernetes contexts found in kubeconfig");
+    }
+
+    let stdin = io::stdin();
+    let mut config = Config::default();
+
+    // Select context
+    println!("Available contexts:");
+    for (i, ctx) in contexts.iter().enumerate() {
+        let current = if ctx.is_current { " (current)" } else { "" };
+        println!("  {}. {}{}", i + 1, ctx.name, current);
+    }
+    print!("\nSelect context number (or press Enter to skip): ");
+    std::io::Write::flush(&mut io::stdout())?;
+
+    let mut line = String::new();
+    stdin.lock().read_line(&mut line)?;
+    let line = line.trim();
+
+    if !line.is_empty() {
+        if let Ok(idx) = line.parse::<usize>() {
+            if idx > 0 && idx <= contexts.len() {
+                let context_name = contexts[idx - 1].name.clone();
+                config.context = Some(context_name.clone());
+
+                // Connect to context and get namespaces
+                println!("\nLoading namespaces for '{}'...", context_name);
+                let client = kube_client.client_for_context(&context_name).await?;
+                let namespaces = kube_client.get_namespaces(&client).await?;
+
+                if !namespaces.is_empty() {
+                    println!("\nAvailable namespaces:");
+                    for (i, ns) in namespaces.iter().enumerate() {
+                        println!("  {}. {}", i + 1, ns.name);
+                    }
+                    print!("\nSelect namespace number (or press Enter to skip): ");
+                    std::io::Write::flush(&mut io::stdout())?;
+
+                    let mut line = String::new();
+                    stdin.lock().read_line(&mut line)?;
+                    let line = line.trim();
+
+                    if !line.is_empty() {
+                        if let Ok(idx) = line.parse::<usize>() {
+                            if idx > 0 && idx <= namespaces.len() {
+                                let namespace_name = namespaces[idx - 1].name.clone();
+                                config.namespace = Some(namespace_name.clone());
+
+                                // Get deployments
+                                println!("\nLoading deployments for '{}'...", namespace_name);
+                                let deployments = kube_client
+                                    .get_deployments(&client, &namespace_name)
+                                    .await?;
+
+                                if !deployments.is_empty() {
+                                    println!("\nAvailable deployments:");
+                                    for (i, deploy) in deployments.iter().enumerate() {
+                                        println!(
+                                            "  {}. {} ({}/{} ready)",
+                                            i + 1,
+                                            deploy.name,
+                                            deploy.ready_replicas,
+                                            deploy.replicas
+                                        );
+                                    }
+                                    print!("\nSelect deployment number (or press Enter to skip): ");
+                                    std::io::Write::flush(&mut io::stdout())?;
+
+                                    let mut line = String::new();
+                                    stdin.lock().read_line(&mut line)?;
+                                    let line = line.trim();
+
+                                    if !line.is_empty() {
+                                        if let Ok(idx) = line.parse::<usize>() {
+                                            if idx > 0 && idx <= deployments.len() {
+                                                config.deployment =
+                                                    Some(deployments[idx - 1].name.clone());
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    println!("No deployments found in namespace.");
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    println!("No namespaces found.");
+                }
+            }
+        }
+    }
+
+    // Filter pattern
+    print!("\nFilter pattern (regex, press Enter to skip): ");
+    std::io::Write::flush(&mut io::stdout())?;
+
+    let mut line = String::new();
+    stdin.lock().read_line(&mut line)?;
+    let filter = line.trim();
+    if !filter.is_empty() {
+        // Validate the filter pattern
+        match CompiledFilter::new(filter) {
+            Ok(_) => {
+                config.filter = Some(filter.to_string());
+
+                // Case insensitive?
+                print!("Case insensitive matching? [y/N]: ");
+                std::io::Write::flush(&mut io::stdout())?;
+
+                let mut line = String::new();
+                stdin.lock().read_line(&mut line)?;
+                if line.trim().eq_ignore_ascii_case("y") {
+                    config.ignore_case = true;
+                }
+
+                // Invert match?
+                print!("Invert match (show non-matching lines)? [y/N]: ");
+                std::io::Write::flush(&mut io::stdout())?;
+
+                let mut line = String::new();
+                stdin.lock().read_line(&mut line)?;
+                if line.trim().eq_ignore_ascii_case("y") {
+                    config.invert_match = true;
+                }
+            }
+            Err(e) => {
+                println!("Invalid filter pattern: {}. Skipping filter.", e);
+            }
+        }
+    }
+
+    // Save config
+    config.save()?;
+
+    println!("\nConfiguration saved to .kubescope");
+    println!("\nConfiguration:");
+    if let Some(ctx) = &config.context {
+        println!("  context: {}", ctx);
+    }
+    if let Some(ns) = &config.namespace {
+        println!("  namespace: {}", ns);
+    }
+    if let Some(deploy) = &config.deployment {
+        println!("  deployment: {}", deploy);
+    }
+    if let Some(filter) = &config.filter {
+        println!("  filter: {}", filter);
+        if config.ignore_case {
+            println!("  ignore_case: true");
+        }
+        if config.invert_match {
+            println!("  invert_match: true");
+        }
+    }
+
+    println!("\nRun 'kubescope' to start with this configuration.");
+    println!("Use --no-config to ignore this file.");
+
+    Ok(())
 }
 
 /// Internal actions for async operations

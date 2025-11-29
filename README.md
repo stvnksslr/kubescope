@@ -20,6 +20,7 @@ cargo install --path .
 
 ```
 kubescope [OPTIONS] [CONTEXT] [NAMESPACE] [DEPLOYMENT]
+kubescope init
 ```
 
 ### Arguments
@@ -39,6 +40,59 @@ kubescope [OPTIONS] [CONTEXT] [NAMESPACE] [DEPLOYMENT]
 | `-e`, `--filter` | | Regex pattern to pre-populate log filter |
 | `-i`, `--ignore-case` | false | Case insensitive filter matching |
 | `-v`, `--invert-match` | false | Invert filter match (show non-matching lines) |
+| `--no-config` | false | Ignore `.kubescope` config file |
+
+## Configuration File
+
+Create a `.kubescope` file in your project directory to automatically load settings when running kubescope.
+
+### Creating a Config File
+
+Use the interactive `init` command:
+
+```bash
+kubescope init
+```
+
+This walks you through selecting a context, namespace, deployment, and filter pattern.
+
+### Manual Configuration
+
+Create a `.kubescope` file manually with any of these options:
+
+```toml
+# Kubernetes context name
+context = "my-cluster"
+
+# Namespace
+namespace = "production"
+
+# Deployment name
+deployment = "my-app"
+
+# Filter pattern (regex)
+filter = "error|warn"
+
+# Case insensitive matching
+ignore_case = true
+
+# Invert match (show non-matching lines)
+invert_match = false
+
+# Buffer size for log entries
+buffer_size = 10000
+
+# Historical log lines per pod
+tail_lines = 100
+```
+
+All fields are optional. CLI arguments override config file values.
+
+### Ignoring the Config File
+
+```bash
+kubescope --no-config
+```
 
 ### Examples
 
@@ -69,6 +123,15 @@ kubescope my-cluster production my-app -e "health.check" -v
 
 # Combined: case insensitive error filter
 kubescope my-cluster production my-app -e "error" -i
+
+# Initialize a .kubescope config file
+kubescope init
+
+# Run with config file (auto-loaded from .kubescope)
+kubescope
+
+# Override config file settings with CLI args
+kubescope other-context
 ```
 
 ## Keybindings
