@@ -1,15 +1,15 @@
 use ratatui::{
+    Frame,
     layout::Rect,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
 use crate::{
     app::AppState,
     ui::{
-        components::{list_nav_hints, ListSelector, ListSelectorExt, StatusBar},
         Layout, Theme,
+        components::{ListSelector, ListSelectorExt, StatusBar, list_nav_hints},
     },
 };
 

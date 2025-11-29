@@ -100,25 +100,52 @@ impl KeyBindings {
         log_viewer.insert(KeyBinding::new(KeyCode::PageUp), Action::PageUp);
         // Top/bottom navigation (less-style)
         log_viewer.insert(KeyBinding::new(KeyCode::Char('g')), Action::ScrollToTop);
-        log_viewer.insert(KeyBinding::shift(KeyCode::Char('G')), Action::ScrollToBottom);
+        log_viewer.insert(
+            KeyBinding::shift(KeyCode::Char('G')),
+            Action::ScrollToBottom,
+        );
         log_viewer.insert(KeyBinding::shift(KeyCode::Char('<')), Action::ScrollToTop);
-        log_viewer.insert(KeyBinding::shift(KeyCode::Char('>')), Action::ScrollToBottom);
+        log_viewer.insert(
+            KeyBinding::shift(KeyCode::Char('>')),
+            Action::ScrollToBottom,
+        );
         log_viewer.insert(KeyBinding::new(KeyCode::Home), Action::ScrollToTop);
         log_viewer.insert(KeyBinding::new(KeyCode::End), Action::ScrollToBottom);
-        log_viewer.insert(KeyBinding::new(KeyCode::Char('f')), Action::ToggleAutoScroll);
-        log_viewer.insert(KeyBinding::new(KeyCode::Char('t')), Action::ToggleTimestamps);
-        log_viewer.insert(KeyBinding::shift(KeyCode::Char('T')), Action::ToggleLocalTime);
+        log_viewer.insert(
+            KeyBinding::new(KeyCode::Char('f')),
+            Action::ToggleAutoScroll,
+        );
+        log_viewer.insert(
+            KeyBinding::new(KeyCode::Char('t')),
+            Action::ToggleTimestamps,
+        );
+        log_viewer.insert(
+            KeyBinding::shift(KeyCode::Char('T')),
+            Action::ToggleLocalTime,
+        );
         log_viewer.insert(KeyBinding::new(KeyCode::Char('p')), Action::TogglePodNames);
-        log_viewer.insert(KeyBinding::shift(KeyCode::Char('J')), Action::ToggleJsonPrettyPrint);
+        log_viewer.insert(
+            KeyBinding::shift(KeyCode::Char('J')),
+            Action::ToggleJsonPrettyPrint,
+        );
         log_viewer.insert(KeyBinding::new(KeyCode::Char('c')), Action::ClearLogs);
         log_viewer.insert(KeyBinding::new(KeyCode::Char('/')), Action::OpenSearch);
         log_viewer.insert(KeyBinding::new(KeyCode::Char('n')), Action::ClearFilter);
-        log_viewer.insert(KeyBinding::new(KeyCode::Char('i')), Action::ToggleCaseSensitive);
+        log_viewer.insert(
+            KeyBinding::new(KeyCode::Char('i')),
+            Action::ToggleCaseSensitive,
+        );
         log_viewer.insert(KeyBinding::new(KeyCode::Char('s')), Action::ToggleStats);
         log_viewer.insert(KeyBinding::new(KeyCode::Char('e')), Action::ExportLogs);
-        log_viewer.insert(KeyBinding::shift(KeyCode::Char('K')), Action::ToggleJsonKeyFilter);
+        log_viewer.insert(
+            KeyBinding::shift(KeyCode::Char('K')),
+            Action::ToggleJsonKeyFilter,
+        );
         log_viewer.insert(KeyBinding::new(KeyCode::Char('r')), Action::CycleTimeRange);
-        log_viewer.insert(KeyBinding::shift(KeyCode::Char('R')), Action::CycleTimeRangeBack);
+        log_viewer.insert(
+            KeyBinding::shift(KeyCode::Char('R')),
+            Action::CycleTimeRangeBack,
+        );
         bindings.insert(KeyContext::LogViewer, log_viewer);
 
         // JSON key filter bindings
@@ -128,13 +155,31 @@ impl KeyBindings {
         json_keys.insert(KeyBinding::ctrl(KeyCode::Char('p')), Action::JsonKeyUp);
         json_keys.insert(KeyBinding::ctrl(KeyCode::Char('n')), Action::JsonKeyDown);
         json_keys.insert(KeyBinding::new(KeyCode::Tab), Action::JsonKeyToggle);
-        json_keys.insert(KeyBinding::new(KeyCode::Enter), Action::JsonKeySelectPattern);
-        json_keys.insert(KeyBinding::ctrl(KeyCode::Char('a')), Action::JsonKeySelectAll);
-        json_keys.insert(KeyBinding::ctrl(KeyCode::Char('x')), Action::JsonKeyClearAll);
+        json_keys.insert(
+            KeyBinding::new(KeyCode::Enter),
+            Action::JsonKeySelectPattern,
+        );
+        json_keys.insert(
+            KeyBinding::ctrl(KeyCode::Char('a')),
+            Action::JsonKeySelectAll,
+        );
+        json_keys.insert(
+            KeyBinding::ctrl(KeyCode::Char('x')),
+            Action::JsonKeyClearAll,
+        );
         json_keys.insert(KeyBinding::new(KeyCode::Esc), Action::ToggleJsonKeyFilter);
-        json_keys.insert(KeyBinding::shift(KeyCode::Char('K')), Action::ToggleJsonKeyFilter);
-        json_keys.insert(KeyBinding::new(KeyCode::Backspace), Action::JsonKeyBackspace);
-        json_keys.insert(KeyBinding::ctrl(KeyCode::Char('u')), Action::JsonKeyClearSearch);
+        json_keys.insert(
+            KeyBinding::shift(KeyCode::Char('K')),
+            Action::ToggleJsonKeyFilter,
+        );
+        json_keys.insert(
+            KeyBinding::new(KeyCode::Backspace),
+            Action::JsonKeyBackspace,
+        );
+        json_keys.insert(
+            KeyBinding::ctrl(KeyCode::Char('u')),
+            Action::JsonKeyClearSearch,
+        );
         bindings.insert(KeyContext::JsonKeyFilter, json_keys);
 
         // Filter input bindings (when search bar is active)
@@ -156,7 +201,10 @@ impl KeyBindings {
         palette.insert(KeyBinding::ctrl(KeyCode::Char('n')), Action::PaletteDown);
         palette.insert(KeyBinding::new(KeyCode::Enter), Action::PaletteSelect);
         palette.insert(KeyBinding::new(KeyCode::Esc), Action::PaletteClose);
-        palette.insert(KeyBinding::new(KeyCode::Backspace), Action::PaletteBackspace);
+        palette.insert(
+            KeyBinding::new(KeyCode::Backspace),
+            Action::PaletteBackspace,
+        );
         palette.insert(KeyBinding::ctrl(KeyCode::Char('c')), Action::PaletteClose);
         bindings.insert(KeyContext::CommandPalette, palette);
 

@@ -99,11 +99,7 @@ impl CompiledFilter {
             None => true,
         };
 
-        if self.invert {
-            !text_match
-        } else {
-            text_match
-        }
+        if self.invert { !text_match } else { text_match }
     }
 
     /// Find all match positions in a string (for highlighting)

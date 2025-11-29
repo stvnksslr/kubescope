@@ -89,6 +89,8 @@ impl Theme {
 
     // Error
     pub fn error() -> Style {
-        Style::default().fg(Self::ERROR).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Self::ERROR)
+            .add_modifier(Modifier::BOLD)
     }
 }

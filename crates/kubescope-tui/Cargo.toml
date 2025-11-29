@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Terminal UI for kubescope"
+publish = false
 
 [dependencies]
 kubescope-types.workspace = true

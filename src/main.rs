@@ -9,10 +9,10 @@ use tokio::sync::mpsc;
 use kubescope_k8s::{DeploymentInfo, KubeClient, NamespaceInfo, PodInfo};
 use kubescope_logs::{CompiledFilter, LogBuffer, LogEntry, LogStreamManager};
 use kubescope_tui::{
-    collect_json_keys, log_viewer_commands, Action, AppState, Command, CommandPalette,
-    CommandPaletteState, ContextSelectScreen, DeploymentSelectScreen, Event, EventHandler,
-    HelpOverlay, JsonKeyFilter, KeyBindings, KeyContext, LogViewerScreen, NamespaceSelectScreen,
-    Screen, Tui,
+    Action, AppState, Command, CommandPalette, CommandPaletteState, ContextSelectScreen,
+    DeploymentSelectScreen, Event, EventHandler, HelpOverlay, JsonKeyFilter, KeyBindings,
+    KeyContext, LogViewerScreen, NamespaceSelectScreen, Screen, Tui, collect_json_keys,
+    log_viewer_commands,
 };
 
 /// Kubescope - A terminal UI for viewing Kubernetes deployment logs
@@ -235,7 +235,13 @@ async fn run_app(args: Args) -> Result<()> {
     }
 
     // Initial render
-    render(&mut tui, &mut state, &log_buffer, &mut palette_state, &commands)?;
+    render(
+        &mut tui,
+        &mut state,
+        &log_buffer,
+        &mut palette_state,
+        &commands,
+    )?;
 
     // Main event loop
     loop {
@@ -432,7 +438,13 @@ async fn run_app(args: Args) -> Result<()> {
             break;
         }
 
-        render(&mut tui, &mut state, &log_buffer, &mut palette_state, &commands)?;
+        render(
+            &mut tui,
+            &mut state,
+            &log_buffer,
+            &mut palette_state,
+            &commands,
+        )?;
     }
 
     // Cleanup
@@ -629,7 +641,14 @@ fn handle_action(
                 let action = cmd.action.clone();
                 palette_state.close();
                 // Recursively handle the selected action
-                handle_action(state, internal_tx, log_buffer, palette_state, commands, action);
+                handle_action(
+                    state,
+                    internal_tx,
+                    log_buffer,
+                    palette_state,
+                    commands,
+                    action,
+                );
                 return;
             }
         }
@@ -836,7 +855,9 @@ fn get_filtered_json_keys(state: &AppState) -> Vec<String> {
     if search.is_empty() {
         state.ui_state.json_available_keys.clone()
     } else {
-        state.ui_state.json_available_keys
+        state
+            .ui_state
+            .json_available_keys
             .iter()
             .filter(|k| k.to_lowercase().contains(&search))
             .cloned()
@@ -861,7 +882,9 @@ fn export_logs_to_file(filename: &str, log_buffer: &LogBuffer, state: &AppState)
             .into_iter()
             .filter(|e| {
                 if let Some(fields) = &e.fields {
-                    fields.keys().any(|k| state.ui_state.json_visible_keys.contains(k))
+                    fields
+                        .keys()
+                        .any(|k| state.ui_state.json_visible_keys.contains(k))
                 } else {
                     false
                 }

@@ -1,9 +1,9 @@
 use futures::{AsyncBufReadExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
-use kube::api::LogParams;
 use kube::Api;
-use std::sync::atomic::{AtomicU64, Ordering};
+use kube::api::LogParams;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -82,7 +82,11 @@ impl LogStreamManager {
                 follow: true,
                 container,
                 // Use since_seconds if provided, otherwise use tail_lines
-                tail_lines: if since_seconds.is_some() { None } else { tail_lines },
+                tail_lines: if since_seconds.is_some() {
+                    None
+                } else {
+                    tail_lines
+                },
                 since_seconds,
                 timestamps: true,
                 ..Default::default()

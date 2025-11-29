@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
-    Frame,
 };
 
 /// Help overlay showing keybindings
@@ -30,9 +30,10 @@ impl HelpOverlay {
                 Style::default().add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Navigation (less-style)", Style::default().fg(Color::Yellow)),
-            ]),
+            Line::from(vec![Span::styled(
+                "Navigation (less-style)",
+                Style::default().fg(Color::Yellow),
+            )]),
             Self::key_line("j/↓/Enter", "Scroll down"),
             Self::key_line("k/↑", "Scroll up"),
             Self::key_line("Ctrl+f/d", "Page down"),
@@ -42,9 +43,10 @@ impl HelpOverlay {
             Self::key_line("G/>", "Go to bottom"),
             Self::key_line("Home/End", "Top/bottom"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Display", Style::default().fg(Color::Yellow)),
-            ]),
+            Line::from(vec![Span::styled(
+                "Display",
+                Style::default().fg(Color::Yellow),
+            )]),
             Self::key_line("f", "Toggle follow mode"),
             Self::key_line("t", "Toggle timestamps"),
             Self::key_line("T", "Toggle local/UTC time"),
@@ -54,16 +56,18 @@ impl HelpOverlay {
             Self::key_line("s", "Toggle stats bar"),
             Self::key_line("r/R", "Cycle time range"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Search", Style::default().fg(Color::Yellow)),
-            ]),
+            Line::from(vec![Span::styled(
+                "Search",
+                Style::default().fg(Color::Yellow),
+            )]),
             Self::key_line("/", "Search/filter logs"),
             Self::key_line("n", "Clear filter"),
             Self::key_line("i", "Toggle case sensitivity"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Actions", Style::default().fg(Color::Yellow)),
-            ]),
+            Line::from(vec![Span::styled(
+                "Actions",
+                Style::default().fg(Color::Yellow),
+            )]),
             Self::key_line("Space", "Command palette"),
             Self::key_line("c", "Clear logs"),
             Self::key_line("e", "Export logs to file"),
@@ -78,7 +82,9 @@ impl HelpOverlay {
                 .border_style(Style::default().fg(Color::Cyan))
                 .title(Span::styled(
                     " Help ",
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 )),
         );
 

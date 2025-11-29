@@ -336,10 +336,7 @@ impl LogEntry {
     pub fn short_pod_name(&self) -> &str {
         // Pod names are usually like: deployment-name-replicaset-hash-pod-hash
         // We want to show just the last part for brevity
-        self.pod_name
-            .rsplit('-')
-            .next()
-            .unwrap_or(&self.pod_name)
+        self.pod_name.rsplit('-').next().unwrap_or(&self.pod_name)
     }
 
     /// Get the message content (from JSON field or raw line)

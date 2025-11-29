@@ -1,15 +1,15 @@
 use ratatui::{
+    Frame,
     layout::Rect,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
 use crate::{
     app::AppState,
     ui::{
-        components::{list_nav_hints, ListSelector, ListSelectorExt, StatusBar},
         Layout, Theme,
+        components::{ListSelector, ListSelectorExt, StatusBar, list_nav_hints},
     },
 };
 
@@ -32,10 +32,7 @@ impl NamespaceSelectScreen {
     }
 
     fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
-        let context_name = state
-            .selected_context
-            .as_deref()
-            .unwrap_or("unknown");
+        let context_name = state.selected_context.as_deref().unwrap_or("unknown");
 
         let title = Line::from(vec![
             Span::styled("kubescope", Theme::title()),

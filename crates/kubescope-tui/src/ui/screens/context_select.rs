@@ -1,15 +1,15 @@
 use ratatui::{
+    Frame,
     layout::Rect,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
 use crate::{
     app::AppState,
     ui::{
-        components::{list_nav_hints, ListSelector, ListSelectorExt, StatusBar},
         Layout, Theme,
+        components::{ListSelector, ListSelectorExt, StatusBar, list_nav_hints},
     },
 };
 
@@ -38,12 +38,11 @@ impl ContextSelectScreen {
             Span::styled("Select Context", Theme::text()),
         ]);
 
-        let header = Paragraph::new(title)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Theme::border()),
-            );
+        let header = Paragraph::new(title).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Theme::border()),
+        );
 
         frame.render_widget(header, area);
     }

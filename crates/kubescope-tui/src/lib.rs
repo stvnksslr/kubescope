@@ -12,8 +12,8 @@ pub use app::{Action, AppState, Screen, UiState};
 pub use config::{KeyBinding, KeyBindings, KeyContext};
 pub use tui::{Event, EventHandler, Tui};
 pub use ui::components::{
-    collect_json_keys, log_viewer_commands, Command, CommandPalette, CommandPaletteState,
-    HelpOverlay, JsonKeyFilter, ListSelector, ListSelectorExt, StatusBar, list_nav_hints,
+    Command, CommandPalette, CommandPaletteState, HelpOverlay, JsonKeyFilter, ListSelector,
+    ListSelectorExt, StatusBar, collect_json_keys, list_nav_hints, log_viewer_commands,
 };
 pub use ui::screens::{
     ContextSelectScreen, DeploymentSelectScreen, LogViewerScreen, NamespaceSelectScreen,

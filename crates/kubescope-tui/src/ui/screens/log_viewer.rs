@@ -1,10 +1,10 @@
 use chrono::Local;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout as RatatuiLayout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
-    Frame,
 };
 
 use kubescope_logs::{LogBuffer, LogEntry, LogLevel};
@@ -86,7 +86,9 @@ impl LogViewerScreen {
             Span::styled(" │ ", Theme::text_dim()),
             Span::styled(
                 format!("⏱ {}", time_range),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
         ]);
 
@@ -104,7 +106,12 @@ impl LogViewerScreen {
 
         // Prompt
         if state.ui_state.search_active {
-            spans.push(Span::styled(" /", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(
+                " /",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ));
         } else {
             spans.push(Span::styled(" Filter: ", Theme::text_dim()));
         }
@@ -122,13 +129,21 @@ impl LogViewerScreen {
 
         // Cursor when active
         if state.ui_state.search_active {
-            spans.push(Span::styled("█", Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK)));
+            spans.push(Span::styled(
+                "█",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::SLOW_BLINK),
+            ));
         }
 
         // Error message
         if let Some(err) = &state.ui_state.filter_error {
             spans.push(Span::styled(" ", Theme::text()));
-            spans.push(Span::styled(format!("⚠ {}", err), Style::default().fg(Color::Red)));
+            spans.push(Span::styled(
+                format!("⚠ {}", err),
+                Style::default().fg(Color::Red),
+            ));
         }
 
         // Case sensitivity indicator
@@ -144,7 +159,10 @@ impl LogViewerScreen {
 
         // Hints
         if state.ui_state.search_active {
-            spans.push(Span::styled("  [Enter] Apply  [Esc] Cancel", Theme::text_dim()));
+            spans.push(Span::styled(
+                "  [Enter] Apply  [Esc] Cancel",
+                Theme::text_dim(),
+            ));
         } else if state.ui_state.active_filter.is_some() {
             spans.push(Span::styled("  [n] Clear  [/] Edit", Theme::text_dim()));
         }
@@ -182,7 +200,9 @@ impl LogViewerScreen {
                 .filter(|e| {
                     // Keep entry if it has any of the selected keys
                     if let Some(fields) = &e.fields {
-                        fields.keys().any(|k| state.ui_state.json_visible_keys.contains(k))
+                        fields
+                            .keys()
+                            .any(|k| state.ui_state.json_visible_keys.contains(k))
                     } else {
                         false // No fields = no match when filtering
                     }
@@ -222,7 +242,9 @@ impl LogViewerScreen {
             .collect();
 
         // Title shows filter status
-        let title = if state.ui_state.active_filter.is_some() || !state.ui_state.json_visible_keys.is_empty() {
+        let title = if state.ui_state.active_filter.is_some()
+            || !state.ui_state.json_visible_keys.is_empty()
+        {
             format!(" Logs ({} matching) ", total_logs)
         } else {
             format!(" Logs ({}) ", total_logs)
@@ -269,29 +291,57 @@ impl LogViewerScreen {
 
         // Fatal (only if > 0)
         if counts.fatal > 0 {
-            spans.push(Span::styled("FTL:", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(
+                "FTL:",
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ));
             spans.push(Span::styled(format!("{} ", counts.fatal), Theme::text()));
         }
 
         // Error
-        spans.push(Span::styled("ERR:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            "ERR:",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ));
         spans.push(Span::styled(format!("{} ", counts.error), Theme::text()));
 
         // Warn
-        spans.push(Span::styled("WRN:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            "WRN:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
         spans.push(Span::styled(format!("{} ", counts.warn), Theme::text()));
 
         // Info
-        spans.push(Span::styled("INF:", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            "INF:",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ));
         spans.push(Span::styled(format!("{} ", counts.info), Theme::text()));
 
         // Debug
-        spans.push(Span::styled("DBG:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            "DBG:",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ));
         spans.push(Span::styled(format!("{} ", counts.debug), Theme::text()));
 
         // Trace (only if > 0)
         if counts.trace > 0 {
-            spans.push(Span::styled("TRC:", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(
+                "TRC:",
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            ));
             spans.push(Span::styled(format!("{} ", counts.trace), Theme::text()));
         }
 
@@ -314,10 +364,7 @@ impl LogViewerScreen {
         let mut spans = Vec::new();
 
         // Line number (compact)
-        spans.push(Span::styled(
-            format!("{:>5}", entry.id),
-            Theme::text_dim(),
-        ));
+        spans.push(Span::styled(format!("{:>5}", entry.id), Theme::text_dim()));
 
         // Timestamp (if enabled and available)
         if state.ui_state.show_timestamps {
@@ -327,10 +374,7 @@ impl LogViewerScreen {
                 } else {
                     ts.format("%H:%M:%S").to_string()
                 };
-                spans.push(Span::styled(
-                    format!(" {}", time_str),
-                    Theme::text_dim(),
-                ));
+                spans.push(Span::styled(format!(" {}", time_str), Theme::text_dim()));
             }
         }
 
@@ -444,7 +488,9 @@ impl LogViewerScreen {
             Span::styled("]", Theme::status_bar()),
             Span::styled(
                 format!("[{}]", state.ui_state.time_range.label()),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(" ", Theme::status_bar()),
             Span::styled("[", Theme::status_bar()),
@@ -465,7 +511,11 @@ impl LogViewerScreen {
             counts.warn,
             counts.info,
             total,
-            if state.ui_state.auto_scroll { "▼" } else { " " }
+            if state.ui_state.auto_scroll {
+                "▼"
+            } else {
+                " "
+            }
         );
 
         // Calculate padding
@@ -487,7 +537,9 @@ fn pod_color(pod_name: &str) -> ratatui::style::Color {
     use ratatui::style::Color;
 
     // Hash the pod name to get a consistent color
-    let hash: u32 = pod_name.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+    let hash: u32 = pod_name
+        .bytes()
+        .fold(0u32, |acc, b| acc.wrapping_add(b as u32));
 
     let colors = [
         Color::Cyan,
@@ -513,7 +565,10 @@ fn level_text_style(level: LogLevel) -> Style {
 }
 
 /// Colorize JSON string into styled spans with optional key filtering
-fn colorize_json(json_str: &str, visible_keys: &std::collections::HashSet<String>) -> Vec<Span<'static>> {
+fn colorize_json(
+    json_str: &str,
+    visible_keys: &std::collections::HashSet<String>,
+) -> Vec<Span<'static>> {
     // If we have key filters, filter the JSON first
     if !visible_keys.is_empty() {
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
@@ -581,7 +636,8 @@ fn colorize_json_inner(json_str: &str) -> Vec<Span<'static>> {
                 let mut is_key = false;
 
                 // Check if this might be a key (look back for { or ,)
-                let trimmed = json_str[..json_str.len().saturating_sub(chars.clone().count() + 1)].trim_end();
+                let trimmed =
+                    json_str[..json_str.len().saturating_sub(chars.clone().count() + 1)].trim_end();
                 if trimmed.ends_with('{') || trimmed.ends_with(',') {
                     is_key = true;
                 }
@@ -640,7 +696,13 @@ fn colorize_json_inner(json_str: &str) -> Vec<Span<'static>> {
                 // Parse number
                 let mut num = String::from(c);
                 while let Some(&next) = chars.peek() {
-                    if next.is_ascii_digit() || next == '.' || next == 'e' || next == 'E' || next == '+' || next == '-' {
+                    if next.is_ascii_digit()
+                        || next == '.'
+                        || next == 'e'
+                        || next == 'E'
+                        || next == '+'
+                        || next == '-'
+                    {
                         num.push(chars.next().unwrap());
                     } else {
                         break;
@@ -651,7 +713,12 @@ fn colorize_json_inner(json_str: &str) -> Vec<Span<'static>> {
             }
             ' ' | '\n' | '\r' | '\t' => {
                 // Collapse whitespace to single space
-                if !current.is_empty() || spans.last().map(|s| !s.content.ends_with(' ')).unwrap_or(true) {
+                if !current.is_empty()
+                    || spans
+                        .last()
+                        .map(|s| !s.content.ends_with(' '))
+                        .unwrap_or(true)
+                {
                     current.push(' ');
                 }
             }

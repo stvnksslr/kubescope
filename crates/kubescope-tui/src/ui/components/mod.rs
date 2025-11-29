@@ -8,4 +8,4 @@ pub use command_palette::{Command, CommandPalette, CommandPaletteState, log_view
 pub use help_overlay::HelpOverlay;
 pub use json_key_filter::{JsonKeyFilter, collect_json_keys};
 pub use list_selector::{ListSelector, ListSelectorExt};
-pub use status_bar::{list_nav_hints, StatusBar};
+pub use status_bar::{StatusBar, list_nav_hints};

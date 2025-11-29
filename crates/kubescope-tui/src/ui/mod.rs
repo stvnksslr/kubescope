@@ -1,6 +1,6 @@
 pub mod components;
-pub mod screens;
 mod layout;
+pub mod screens;
 mod theme;
 
 pub use layout::Layout;

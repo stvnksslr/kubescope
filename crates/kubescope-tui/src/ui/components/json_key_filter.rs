@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
-    Frame,
 };
 
 use crate::app::AppState;
@@ -31,7 +31,9 @@ impl JsonKeyFilter {
         let filtered_keys: Vec<&String> = if search.is_empty() {
             state.ui_state.json_available_keys.iter().collect()
         } else {
-            state.ui_state.json_available_keys
+            state
+                .ui_state
+                .json_available_keys
                 .iter()
                 .filter(|k| k.to_lowercase().contains(&search))
                 .collect()
@@ -44,11 +46,15 @@ impl JsonKeyFilter {
         // Calculate viewport
         let header_lines = 3; // Search bar + separator + column headers
         let footer_lines = 2; // Help text
-        let viewport_height = (popup_height as usize).saturating_sub(header_lines + footer_lines + 2); // -2 for borders
+        let viewport_height =
+            (popup_height as usize).saturating_sub(header_lines + footer_lines + 2); // -2 for borders
 
         // Adjust scroll to keep selection visible
         if state.ui_state.json_key_selection >= state.ui_state.json_key_scroll + viewport_height {
-            state.ui_state.json_key_scroll = state.ui_state.json_key_selection.saturating_sub(viewport_height - 1);
+            state.ui_state.json_key_scroll = state
+                .ui_state
+                .json_key_selection
+                .saturating_sub(viewport_height - 1);
         }
         if state.ui_state.json_key_selection < state.ui_state.json_key_scroll {
             state.ui_state.json_key_scroll = state.ui_state.json_key_selection;
@@ -65,10 +71,21 @@ impl JsonKeyFilter {
         // Search input line
         let search_line = Line::from(vec![
             Span::styled(" Search: ", Style::default().fg(Color::Yellow)),
-            Span::styled(&state.ui_state.json_key_search, Style::default().fg(Color::White)),
-            Span::styled("█", Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK)),
             Span::styled(
-                format!("  ({}/{} keys, {} selected)", filtered_count, total_keys, selected_count),
+                &state.ui_state.json_key_search,
+                Style::default().fg(Color::White),
+            ),
+            Span::styled(
+                "█",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::SLOW_BLINK),
+            ),
+            Span::styled(
+                format!(
+                    "  ({}/{} keys, {} selected)",
+                    filtered_count, total_keys, selected_count
+                ),
                 Style::default().fg(Color::DarkGray),
             ),
         ]);
@@ -110,7 +127,9 @@ impl JsonKeyFilter {
             };
 
             let key_style = if is_cursor {
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::Cyan)
             };
@@ -143,7 +162,10 @@ impl JsonKeyFilter {
                 (state.ui_state.json_key_scroll + viewport_height).min(filtered_keys.len()),
                 filtered_keys.len()
             );
-            lines.push(Line::from(Span::styled(scroll_info, Style::default().fg(Color::DarkGray))));
+            lines.push(Line::from(Span::styled(
+                scroll_info,
+                Style::default().fg(Color::DarkGray),
+            )));
         } else {
             lines.push(Line::from(""));
         }
@@ -175,7 +197,9 @@ impl JsonKeyFilter {
                 .border_style(Style::default().fg(Color::Cyan))
                 .title(Span::styled(
                     title,
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 )),
         );
 

@@ -39,10 +39,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 unicode-width = "0.2"
 
 # Internal crates
-kubescope-types = { path = "crates/kubescope-types" }
-kubescope-k8s = { path = "crates/kubescope-k8s" }
-kubescope-logs = { path = "crates/kubescope-logs" }
-kubescope-tui = { path = "crates/kubescope-tui" }
+kubescope-types = { path = "crates/kubescope-types", version = "0.1.0" }
+kubescope-k8s = { path = "crates/kubescope-k8s", version = "0.1.0" }
+kubescope-logs = { path = "crates/kubescope-logs", version = "0.1.0" }
+kubescope-tui = { path = "crates/kubescope-tui", version = "0.1.0" }
 
 [package]
 name = "kubescope"

@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{Namespace, Pod};
+use kube::Api;
 use kube::api::ListParams;
 use kube::config::{KubeConfigOptions, Kubeconfig};
-use kube::Api;
 
 use kubescope_types::{
     ContainerInfo, ContextInfo, DeploymentInfo, NamespaceInfo, PodInfo, PodStatus,
@@ -62,8 +62,10 @@ impl KubeClient {
             context_name
         ))?;
 
-        kube::Client::try_from(config)
-            .context(format!("Failed to create client for context: {}", context_name))
+        kube::Client::try_from(config).context(format!(
+            "Failed to create client for context: {}",
+            context_name
+        ))
     }
 
     /// Get the current context name

@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 use crate::app::Action;
@@ -133,11 +133,7 @@ impl CommandPaletteState {
 pub struct CommandPalette;
 
 impl CommandPalette {
-    pub fn render(
-        frame: &mut Frame,
-        state: &mut CommandPaletteState,
-        commands: &[Command],
-    ) {
+    pub fn render(frame: &mut Frame, state: &mut CommandPaletteState, commands: &[Command]) {
         let area = frame.area();
 
         // Center the palette
@@ -160,9 +156,10 @@ impl CommandPalette {
 
         // Render search input
         let search_text = if state.search_input.is_empty() {
-            vec![
-                Span::styled("Type to filter...", Style::default().fg(Color::DarkGray)),
-            ]
+            vec![Span::styled(
+                "Type to filter...",
+                Style::default().fg(Color::DarkGray),
+            )]
         } else {
             vec![
                 Span::styled(&state.search_input, Style::default().fg(Color::White)),
@@ -176,7 +173,9 @@ impl CommandPalette {
                 .border_style(Style::default().fg(Color::Yellow))
                 .title(Span::styled(
                     " Command Palette ",
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
                 )),
         );
         frame.render_widget(search_widget, chunks[0]);
