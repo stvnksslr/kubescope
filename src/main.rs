@@ -8,13 +8,26 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use kubescope_k8s::{DeploymentInfo, KubeClient, NamespaceInfo, PodInfo};
-use kubescope_logs::{CompiledFilter, LogBuffer, LogEntry, LogStreamManager};
-use kubescope_tui::{
-    Action, AppState, Command, CommandPalette, CommandPaletteState, ContextSelectScreen,
-    DeploymentSelectScreen, Event, EventHandler, HelpOverlay, JsonKeyFilter, KeyBindings,
-    KeyContext, LogViewerScreen, NamespaceSelectScreen, Screen, Tui, collect_json_keys,
+mod app;
+mod config;
+mod k8s;
+mod logs;
+mod tui;
+mod types;
+mod ui;
+
+use app::{Action, AppState, Screen};
+use config::{KeyBindings, KeyContext};
+use k8s::KubeClient;
+use logs::{CompiledFilter, LogBuffer, LogStreamManager};
+use tui::{Event, EventHandler, Tui};
+use types::{DeploymentInfo, LogEntry, NamespaceInfo, PodInfo};
+use ui::components::{
+    Command, CommandPalette, CommandPaletteState, HelpOverlay, JsonKeyFilter, collect_json_keys,
     log_viewer_commands,
+};
+use ui::screens::{
+    ContextSelectScreen, DeploymentSelectScreen, LogViewerScreen, NamespaceSelectScreen,
 };
 
 /// Configuration file structure for .kubescope

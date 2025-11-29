@@ -1,7 +1,6 @@
 [workspace]
 changelog_update = true
 semver_check = true
-publish = false  
 
 [changelog]
 body = """
