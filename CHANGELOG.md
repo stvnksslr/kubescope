@@ -19,9 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - feat(release flow): (by @stvnksslr)
-- feat(release flow): (by @stvnksslr)
-- feat(release flow): (by @stvnksslr)
-- feat(release flow): (by @stvnksslr)
 - feat(first pass grep like cli): (by @stvnksslr)
 - feat(less like commands + time range): (by @stvnksslr)
 

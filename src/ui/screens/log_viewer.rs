@@ -368,15 +368,15 @@ impl LogViewerScreen {
         spans.push(Span::styled(format!("{:>5}", entry.id), Theme::text_dim()));
 
         // Timestamp (if enabled and available)
-        if state.ui_state.show_timestamps {
-            if let Some(ts) = &entry.timestamp {
-                let time_str = if state.ui_state.use_local_time {
-                    ts.with_timezone(&Local).format("%H:%M:%S").to_string()
-                } else {
-                    ts.format("%H:%M:%S").to_string()
-                };
-                spans.push(Span::styled(format!(" {}", time_str), Theme::text_dim()));
-            }
+        if state.ui_state.show_timestamps
+            && let Some(ts) = &entry.timestamp
+        {
+            let time_str = if state.ui_state.use_local_time {
+                ts.with_timezone(&Local).format("%H:%M:%S").to_string()
+            } else {
+                ts.format("%H:%M:%S").to_string()
+            };
+            spans.push(Span::styled(format!(" {}", time_str), Theme::text_dim()));
         }
 
         // Pod name (if enabled)
@@ -571,18 +571,17 @@ fn colorize_json(
     visible_keys: &std::collections::HashSet<String>,
 ) -> Vec<Span<'static>> {
     // If we have key filters, filter the JSON first
-    if !visible_keys.is_empty() {
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
-            if let serde_json::Value::Object(map) = parsed {
-                let filtered: serde_json::Map<String, serde_json::Value> = map
-                    .into_iter()
-                    .filter(|(k, _)| visible_keys.contains(k))
-                    .collect();
-                let filtered_str = serde_json::to_string(&serde_json::Value::Object(filtered))
-                    .unwrap_or_else(|_| json_str.to_string());
-                return colorize_json_inner(&filtered_str);
-            }
-        }
+    if !visible_keys.is_empty()
+        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str)
+        && let serde_json::Value::Object(map) = parsed
+    {
+        let filtered: serde_json::Map<String, serde_json::Value> = map
+            .into_iter()
+            .filter(|(k, _)| visible_keys.contains(k))
+            .collect();
+        let filtered_str = serde_json::to_string(&serde_json::Value::Object(filtered))
+            .unwrap_or_else(|_| json_str.to_string());
+        return colorize_json_inner(&filtered_str);
     }
 
     colorize_json_inner(json_str)
@@ -648,10 +647,10 @@ fn colorize_json_inner(json_str: &str) -> Vec<Span<'static>> {
                     if sc == '"' {
                         break;
                     }
-                    if sc == '\\' {
-                        if let Some(escaped) = chars.next() {
-                            s.push(escaped);
-                        }
+                    if sc == '\\'
+                        && let Some(escaped) = chars.next()
+                    {
+                        s.push(escaped);
                     }
                 }
 

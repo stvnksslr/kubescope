@@ -239,77 +239,76 @@ async fn run_init() -> Result<()> {
     stdin.lock().read_line(&mut line)?;
     let line = line.trim();
 
-    if !line.is_empty() {
-        if let Ok(idx) = line.parse::<usize>() {
-            if idx > 0 && idx <= contexts.len() {
-                let context_name = contexts[idx - 1].name.clone();
-                config.context = Some(context_name.clone());
+    if !line.is_empty()
+        && let Ok(idx) = line.parse::<usize>()
+        && idx > 0
+        && idx <= contexts.len()
+    {
+        let context_name = contexts[idx - 1].name.clone();
+        config.context = Some(context_name.clone());
 
-                // Connect to context and get namespaces
-                println!("\nLoading namespaces for '{}'...", context_name);
-                let client = kube_client.client_for_context(&context_name).await?;
-                let namespaces = kube_client.get_namespaces(&client).await?;
+        // Connect to context and get namespaces
+        println!("\nLoading namespaces for '{}'...", context_name);
+        let client = kube_client.client_for_context(&context_name).await?;
+        let namespaces = kube_client.get_namespaces(&client).await?;
 
-                if !namespaces.is_empty() {
-                    println!("\nAvailable namespaces:");
-                    for (i, ns) in namespaces.iter().enumerate() {
-                        println!("  {}. {}", i + 1, ns.name);
+        if !namespaces.is_empty() {
+            println!("\nAvailable namespaces:");
+            for (i, ns) in namespaces.iter().enumerate() {
+                println!("  {}. {}", i + 1, ns.name);
+            }
+            print!("\nSelect namespace number (or press Enter to skip): ");
+            std::io::Write::flush(&mut io::stdout())?;
+
+            let mut line = String::new();
+            stdin.lock().read_line(&mut line)?;
+            let line = line.trim();
+
+            if !line.is_empty()
+                && let Ok(idx) = line.parse::<usize>()
+                && idx > 0
+                && idx <= namespaces.len()
+            {
+                let namespace_name = namespaces[idx - 1].name.clone();
+                config.namespace = Some(namespace_name.clone());
+
+                // Get deployments
+                println!("\nLoading deployments for '{}'...", namespace_name);
+                let deployments = kube_client
+                    .get_deployments(&client, &namespace_name)
+                    .await?;
+
+                if !deployments.is_empty() {
+                    println!("\nAvailable deployments:");
+                    for (i, deploy) in deployments.iter().enumerate() {
+                        println!(
+                            "  {}. {} ({}/{} ready)",
+                            i + 1,
+                            deploy.name,
+                            deploy.ready_replicas,
+                            deploy.replicas
+                        );
                     }
-                    print!("\nSelect namespace number (or press Enter to skip): ");
+                    print!("\nSelect deployment number (or press Enter to skip): ");
                     std::io::Write::flush(&mut io::stdout())?;
 
                     let mut line = String::new();
                     stdin.lock().read_line(&mut line)?;
                     let line = line.trim();
 
-                    if !line.is_empty() {
-                        if let Ok(idx) = line.parse::<usize>() {
-                            if idx > 0 && idx <= namespaces.len() {
-                                let namespace_name = namespaces[idx - 1].name.clone();
-                                config.namespace = Some(namespace_name.clone());
-
-                                // Get deployments
-                                println!("\nLoading deployments for '{}'...", namespace_name);
-                                let deployments = kube_client
-                                    .get_deployments(&client, &namespace_name)
-                                    .await?;
-
-                                if !deployments.is_empty() {
-                                    println!("\nAvailable deployments:");
-                                    for (i, deploy) in deployments.iter().enumerate() {
-                                        println!(
-                                            "  {}. {} ({}/{} ready)",
-                                            i + 1,
-                                            deploy.name,
-                                            deploy.ready_replicas,
-                                            deploy.replicas
-                                        );
-                                    }
-                                    print!("\nSelect deployment number (or press Enter to skip): ");
-                                    std::io::Write::flush(&mut io::stdout())?;
-
-                                    let mut line = String::new();
-                                    stdin.lock().read_line(&mut line)?;
-                                    let line = line.trim();
-
-                                    if !line.is_empty() {
-                                        if let Ok(idx) = line.parse::<usize>() {
-                                            if idx > 0 && idx <= deployments.len() {
-                                                config.deployment =
-                                                    Some(deployments[idx - 1].name.clone());
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    println!("No deployments found in namespace.");
-                                }
-                            }
-                        }
+                    if !line.is_empty()
+                        && let Ok(idx) = line.parse::<usize>()
+                        && idx > 0
+                        && idx <= deployments.len()
+                    {
+                        config.deployment = Some(deployments[idx - 1].name.clone());
                     }
                 } else {
-                    println!("No namespaces found.");
+                    println!("No deployments found in namespace.");
                 }
             }
+        } else {
+            println!("No namespaces found.");
         }
     }
 
@@ -682,8 +681,8 @@ async fn run_app(args: Args) -> Result<()> {
                     }
 
                     InternalAction::StartLogStreaming => {
-                        if let Some(client) = &active_client {
-                            if let Some(namespace) = &state.selected_namespace {
+                        if let Some(client) = &active_client
+                            && let Some(namespace) = &state.selected_namespace {
                                 // Clear previous logs
                                 log_buffer.clear();
                                 // Reset scroll and enable auto-scroll
@@ -701,12 +700,11 @@ async fn run_app(args: Args) -> Result<()> {
                                     since_seconds,
                                 );
                             }
-                        }
                     }
 
                     InternalAction::RestartLogStreaming => {
-                        if let Some(client) = &active_client {
-                            if let Some(namespace) = &state.selected_namespace {
+                        if let Some(client) = &active_client
+                            && let Some(namespace) = &state.selected_namespace {
                                 // Stop current streams
                                 stream_manager.stop();
                                 // Clear logs for fresh start with new time range
@@ -725,7 +723,6 @@ async fn run_app(args: Args) -> Result<()> {
                                     since_seconds,
                                 );
                             }
-                        }
                     }
 
                     InternalAction::StopLogStreaming => {
@@ -820,13 +817,13 @@ fn handle_action(
             state.ui_state.active_filter = None;
             state.ui_state.search_input.clear();
             state.ui_state.filter_error = None;
-            if let Some(namespace) = &state.selected_namespace {
-                if let Some(deployment) = state.deployments.iter().find(|d| d.name == name) {
-                    let _ = internal_tx.send(InternalAction::LoadPods(
-                        namespace.clone(),
-                        deployment.clone(),
-                    ));
-                }
+            if let Some(namespace) = &state.selected_namespace
+                && let Some(deployment) = state.deployments.iter().find(|d| d.name == name)
+            {
+                let _ = internal_tx.send(InternalAction::LoadPods(
+                    namespace.clone(),
+                    deployment.clone(),
+                ));
             }
         }
 
@@ -954,7 +951,6 @@ fn handle_action(
                     commands,
                     action,
                 );
-                return;
             }
         }
 
@@ -1082,27 +1078,27 @@ fn handle_action(
 fn handle_list_select(state: &mut AppState, internal_tx: &mpsc::UnboundedSender<InternalAction>) {
     match state.current_screen {
         Screen::ContextSelect => {
-            if let Some(idx) = state.selected_index() {
-                if let Some(ctx) = state.contexts.get(idx) {
-                    let name = ctx.name.clone();
-                    let _ = state.action_tx.send(Action::SelectContext(name));
-                }
+            if let Some(idx) = state.selected_index()
+                && let Some(ctx) = state.contexts.get(idx)
+            {
+                let name = ctx.name.clone();
+                let _ = state.action_tx.send(Action::SelectContext(name));
             }
         }
         Screen::NamespaceSelect => {
-            if let Some(idx) = state.selected_index() {
-                if let Some(ns) = state.namespaces.get(idx) {
-                    let name = ns.name.clone();
-                    let _ = state.action_tx.send(Action::SelectNamespace(name));
-                }
+            if let Some(idx) = state.selected_index()
+                && let Some(ns) = state.namespaces.get(idx)
+            {
+                let name = ns.name.clone();
+                let _ = state.action_tx.send(Action::SelectNamespace(name));
             }
         }
         Screen::DeploymentSelect => {
-            if let Some(idx) = state.selected_index() {
-                if let Some(deploy) = state.deployments.get(idx) {
-                    let name = deploy.name.clone();
-                    let _ = state.action_tx.send(Action::SelectDeployment(name));
-                }
+            if let Some(idx) = state.selected_index()
+                && let Some(deploy) = state.deployments.get(idx)
+            {
+                let name = deploy.name.clone();
+                let _ = state.action_tx.send(Action::SelectDeployment(name));
             }
         }
         Screen::LogViewer => {

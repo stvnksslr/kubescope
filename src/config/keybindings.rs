@@ -216,10 +216,10 @@ impl KeyBindings {
         let binding = KeyBinding::from_event(key);
 
         // First check context-specific bindings
-        if let Some(context_bindings) = self.bindings.get(&context) {
-            if let Some(action) = context_bindings.get(&binding) {
-                return Some(action.clone());
-            }
+        if let Some(context_bindings) = self.bindings.get(&context)
+            && let Some(action) = context_bindings.get(&binding)
+        {
+            return Some(action.clone());
         }
 
         // Fall back to global bindings
@@ -235,17 +235,17 @@ impl KeyBindings {
         let binding = KeyBinding::from_event(key);
 
         // Check filter input bindings first
-        if let Some(filter_bindings) = self.bindings.get(&KeyContext::FilterInput) {
-            if let Some(action) = filter_bindings.get(&binding) {
-                return Some(action.clone());
-            }
+        if let Some(filter_bindings) = self.bindings.get(&KeyContext::FilterInput)
+            && let Some(action) = filter_bindings.get(&binding)
+        {
+            return Some(action.clone());
         }
 
         // For regular characters, return SearchInput action
-        if let KeyCode::Char(c) = key.code {
-            if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-                return Some(Action::SearchInput(c));
-            }
+        if let KeyCode::Char(c) = key.code
+            && (key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT)
+        {
+            return Some(Action::SearchInput(c));
         }
 
         None
@@ -256,17 +256,17 @@ impl KeyBindings {
         let binding = KeyBinding::from_event(key);
 
         // Check palette bindings first
-        if let Some(palette_bindings) = self.bindings.get(&KeyContext::CommandPalette) {
-            if let Some(action) = palette_bindings.get(&binding) {
-                return Some(action.clone());
-            }
+        if let Some(palette_bindings) = self.bindings.get(&KeyContext::CommandPalette)
+            && let Some(action) = palette_bindings.get(&binding)
+        {
+            return Some(action.clone());
         }
 
         // For regular characters, return PaletteInput action
-        if let KeyCode::Char(c) = key.code {
-            if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-                return Some(Action::PaletteInput(c));
-            }
+        if let KeyCode::Char(c) = key.code
+            && (key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT)
+        {
+            return Some(Action::PaletteInput(c));
         }
 
         None
@@ -277,17 +277,17 @@ impl KeyBindings {
         let binding = KeyBinding::from_event(key);
 
         // Check JSON key filter bindings first
-        if let Some(json_bindings) = self.bindings.get(&KeyContext::JsonKeyFilter) {
-            if let Some(action) = json_bindings.get(&binding) {
-                return Some(action.clone());
-            }
+        if let Some(json_bindings) = self.bindings.get(&KeyContext::JsonKeyFilter)
+            && let Some(action) = json_bindings.get(&binding)
+        {
+            return Some(action.clone());
         }
 
         // For regular characters, return JsonKeyInput action for search
-        if let KeyCode::Char(c) = key.code {
-            if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-                return Some(Action::JsonKeyInput(c));
-            }
+        if let KeyCode::Char(c) = key.code
+            && (key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT)
+        {
+            return Some(Action::JsonKeyInput(c));
         }
 
         None
