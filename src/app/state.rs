@@ -1,9 +1,88 @@
 use ratatui::widgets::ListState;
+use std::collections::HashSet;
 use tokio::sync::mpsc;
 
 use super::Action;
 use crate::logs::CompiledFilter;
-use crate::types::{ContextInfo, DeploymentInfo, NamespaceInfo, PodInfo, TimeRange};
+use crate::types::{ArcLogEntry, ContextInfo, DeploymentInfo, NamespaceInfo, PodInfo, TimeRange};
+
+/// Cache for filtered log results to avoid re-filtering on every render
+#[derive(Default)]
+pub struct FilterCache {
+    /// Cached filter pattern (None = no text filter)
+    cached_filter_pattern: Option<String>,
+    /// Cached case sensitivity setting
+    cached_case_insensitive: bool,
+    /// Cached JSON visible keys
+    cached_json_keys: HashSet<String>,
+    /// Buffer entry count when cache was built
+    cached_log_count: usize,
+    /// The cached filtered entries
+    pub cached_entries: Vec<ArcLogEntry>,
+    /// Whether cache is valid
+    pub is_valid: bool,
+}
+
+impl FilterCache {
+    /// Check if cache needs to be invalidated based on current state
+    pub fn needs_refresh(
+        &self,
+        filter: Option<&CompiledFilter>,
+        case_insensitive: bool,
+        json_keys: &HashSet<String>,
+        current_log_count: usize,
+    ) -> bool {
+        if !self.is_valid {
+            return true;
+        }
+
+        // Check if log count changed (new logs arrived)
+        if self.cached_log_count != current_log_count {
+            return true;
+        }
+
+        // Check if filter changed
+        let current_pattern = filter.map(|f| f.pattern().to_string());
+        if self.cached_filter_pattern != current_pattern {
+            return true;
+        }
+
+        // Check if case sensitivity changed
+        if self.cached_case_insensitive != case_insensitive {
+            return true;
+        }
+
+        // Check if JSON keys changed
+        if self.cached_json_keys != *json_keys {
+            return true;
+        }
+
+        false
+    }
+
+    /// Update the cache with new filtered results
+    pub fn update(
+        &mut self,
+        filter: Option<&CompiledFilter>,
+        case_insensitive: bool,
+        json_keys: &HashSet<String>,
+        log_count: usize,
+        entries: Vec<ArcLogEntry>,
+    ) {
+        self.cached_filter_pattern = filter.map(|f| f.pattern().to_string());
+        self.cached_case_insensitive = case_insensitive;
+        self.cached_json_keys = json_keys.clone();
+        self.cached_log_count = log_count;
+        self.cached_entries = entries;
+        self.is_valid = true;
+    }
+
+    /// Invalidate the cache
+    pub fn invalidate(&mut self) {
+        self.is_valid = false;
+        self.cached_entries.clear();
+    }
+}
 
 /// Screen enumeration
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,6 +165,9 @@ pub struct UiState {
 
     /// Show timestamps in local time (vs UTC)
     pub use_local_time: bool,
+
+    /// Cache for filtered log results
+    pub filter_cache: FilterCache,
 }
 
 impl Default for UiState {
@@ -120,6 +202,8 @@ impl Default for UiState {
             time_range: TimeRange::default(),
             // Local time display (default to local time for better UX)
             use_local_time: true,
+            // Filter cache
+            filter_cache: FilterCache::default(),
         }
     }
 }
@@ -161,6 +245,12 @@ pub struct AppState {
 
     /// Channel sender for async actions
     pub action_tx: mpsc::UnboundedSender<Action>,
+
+    /// Dirty flag for rendering - only render when true
+    pub render_dirty: bool,
+
+    /// Last known log count for change detection
+    pub last_log_count: usize,
 }
 
 impl AppState {
@@ -181,7 +271,14 @@ impl AppState {
             ui_state,
             should_quit: false,
             action_tx,
+            render_dirty: true, // Start dirty to ensure initial render
+            last_log_count: 0,
         }
+    }
+
+    /// Mark the UI as needing a re-render
+    pub fn mark_dirty(&mut self) {
+        self.render_dirty = true;
     }
 
     /// Navigate to a new screen, pushing current to stack

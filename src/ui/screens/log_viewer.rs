@@ -9,14 +9,19 @@ use ratatui::{
 
 use crate::app::AppState;
 use crate::logs::LogBuffer;
-use crate::types::{LogEntry, LogLevel};
+use crate::types::{ArcLogEntry, LogEntry, LogLevel};
 use crate::ui::Theme;
 
 /// Log viewer screen
 pub struct LogViewerScreen;
 
 impl LogViewerScreen {
-    pub fn render(frame: &mut Frame, state: &mut AppState, log_buffer: &LogBuffer) {
+    pub fn render(
+        frame: &mut Frame,
+        state: &mut AppState,
+        log_buffer: &LogBuffer,
+        dropped_count: u64,
+    ) {
         let area = frame.area();
 
         // Determine if we need the filter bar
@@ -64,7 +69,7 @@ impl LogViewerScreen {
         idx += 1;
 
         // Status bar
-        Self::render_status_bar(frame, chunks[idx], state, log_buffer);
+        Self::render_status_bar(frame, chunks[idx], state, log_buffer, dropped_count);
     }
 
     fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -185,35 +190,58 @@ impl LogViewerScreen {
     }
 
     fn render_logs(frame: &mut Frame, area: Rect, state: &mut AppState, log_buffer: &LogBuffer) {
-        let all_logs = log_buffer.all();
+        let current_log_count = log_buffer.len();
 
-        // Apply text filter if active
-        let text_filtered: Vec<&LogEntry> = if let Some(filter) = &state.ui_state.active_filter {
-            all_logs.iter().filter(|e| filter.matches(e)).collect()
-        } else {
-            all_logs.iter().collect()
-        };
+        // Check if we need to refresh the filter cache
+        let needs_refresh = state.ui_state.filter_cache.needs_refresh(
+            state.ui_state.active_filter.as_ref(),
+            state.ui_state.filter_case_insensitive,
+            &state.ui_state.json_visible_keys,
+            current_log_count,
+        );
 
-        // Apply JSON key filter if active (only show entries with selected keys)
-        let filtered_logs: Vec<&LogEntry> = if !state.ui_state.json_visible_keys.is_empty() {
-            text_filtered
-                .into_iter()
-                .filter(|e| {
-                    // Keep entry if it has any of the selected keys
-                    if let Some(fields) = &e.fields {
-                        fields
-                            .keys()
-                            .any(|k| state.ui_state.json_visible_keys.contains(k))
-                    } else {
-                        false // No fields = no match when filtering
-                    }
-                })
-                .collect()
-        } else {
-            text_filtered
-        };
+        // Only recompute filtered logs when cache is invalid
+        if needs_refresh {
+            let all_logs = log_buffer.all();
 
-        let total_logs = filtered_logs.len();
+            // Apply text filter if active (Arc clones are cheap)
+            let text_filtered: Vec<ArcLogEntry> =
+                if let Some(filter) = &state.ui_state.active_filter {
+                    all_logs.into_iter().filter(|e| filter.matches(e)).collect()
+                } else {
+                    all_logs
+                };
+
+            // Apply JSON key filter if active (only show entries with selected keys)
+            let filtered_logs: Vec<ArcLogEntry> = if !state.ui_state.json_visible_keys.is_empty() {
+                text_filtered
+                    .into_iter()
+                    .filter(|e| {
+                        // Keep entry if it has any of the selected keys
+                        if let Some(fields) = &e.fields {
+                            fields
+                                .keys()
+                                .any(|k| state.ui_state.json_visible_keys.contains(k))
+                        } else {
+                            false // No fields = no match when filtering
+                        }
+                    })
+                    .collect()
+            } else {
+                text_filtered
+            };
+
+            // Update the cache
+            state.ui_state.filter_cache.update(
+                state.ui_state.active_filter.as_ref(),
+                state.ui_state.filter_case_insensitive,
+                &state.ui_state.json_visible_keys,
+                current_log_count,
+                filtered_logs,
+            );
+        }
+
+        let total_logs = state.ui_state.filter_cache.cached_entries.len();
 
         // Calculate visible area (accounting for border)
         let inner_height = area.height.saturating_sub(2) as usize;
@@ -229,11 +257,15 @@ impl LogViewerScreen {
             state.ui_state.log_scroll = max_scroll;
         }
 
-        // Get visible logs
-        let visible_logs: Vec<&LogEntry> = filtered_logs
-            .into_iter()
+        // Get visible logs from cache (viewport-first: skip/take from cached results)
+        let visible_logs: Vec<ArcLogEntry> = state
+            .ui_state
+            .filter_cache
+            .cached_entries
+            .iter()
             .skip(state.ui_state.log_scroll)
             .take(inner_height)
+            .cloned()
             .collect();
 
         // Build log lines with highlighting
@@ -407,8 +439,12 @@ impl LogViewerScreen {
                 &entry.raw
             };
 
-            // Colorize the JSON with optional key filtering
-            let json_spans = colorize_json(json_str, &state.ui_state.json_visible_keys);
+            // Colorize the JSON with optional key filtering (pass pre-parsed fields to avoid re-parsing)
+            let json_spans = colorize_json(
+                json_str,
+                &state.ui_state.json_visible_keys,
+                entry.fields.as_ref(),
+            );
             spans.extend(json_spans);
         } else {
             // Regular message handling
@@ -471,7 +507,13 @@ impl LogViewerScreen {
         Line::from(spans)
     }
 
-    fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState, log_buffer: &LogBuffer) {
+    fn render_status_bar(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        log_buffer: &LogBuffer,
+        dropped_count: u64,
+    ) {
         let counts = log_buffer.level_counts();
         let total = counts.total();
 
@@ -504,6 +546,15 @@ impl LogViewerScreen {
             Span::styled("Esc", Theme::status_bar_key()),
             Span::styled("]Back", Theme::status_bar()),
         ];
+
+        // Show dropped logs warning if any
+        if dropped_count > 0 {
+            spans.push(Span::styled(" ", Theme::status_bar()));
+            spans.push(Span::styled(
+                format!("[{}dropped]", dropped_count),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ));
+        }
 
         // Right side: log counts
         let right_text = format!(
@@ -566,22 +617,44 @@ fn level_text_style(level: LogLevel) -> Style {
 }
 
 /// Colorize JSON string into styled spans with optional key filtering
+/// Uses pre-parsed fields when available to avoid re-parsing JSON
 fn colorize_json(
     json_str: &str,
     visible_keys: &std::collections::HashSet<String>,
+    parsed_fields: Option<&std::collections::HashMap<String, serde_json::Value>>,
 ) -> Vec<Span<'static>> {
-    // If we have key filters, filter the JSON first
-    if !visible_keys.is_empty()
-        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str)
-        && let serde_json::Value::Object(map) = parsed
-    {
-        let filtered: serde_json::Map<String, serde_json::Value> = map
-            .into_iter()
-            .filter(|(k, _)| visible_keys.contains(k))
-            .collect();
-        let filtered_str = serde_json::to_string(&serde_json::Value::Object(filtered))
-            .unwrap_or_else(|_| json_str.to_string());
-        return colorize_json_inner(&filtered_str);
+    // If we have key filters and pre-parsed fields, use them to avoid re-parsing
+    if !visible_keys.is_empty() {
+        if let Some(fields) = parsed_fields {
+            // Use pre-parsed fields - much faster than re-parsing
+            let filtered: serde_json::Map<String, serde_json::Value> = fields
+                .iter()
+                .filter(|(k, _)| visible_keys.contains(*k))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            if filtered.is_empty() {
+                // No matching keys, show empty object
+                return vec![Span::styled("{}", Style::default().fg(Color::White))];
+            }
+
+            let filtered_str = serde_json::to_string(&serde_json::Value::Object(filtered))
+                .unwrap_or_else(|_| json_str.to_string());
+            return colorize_json_inner(&filtered_str);
+        }
+
+        // Fallback: parse JSON if fields not pre-parsed (shouldn't happen for JSON logs)
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str)
+            && let serde_json::Value::Object(map) = parsed
+        {
+            let filtered: serde_json::Map<String, serde_json::Value> = map
+                .into_iter()
+                .filter(|(k, _)| visible_keys.contains(k))
+                .collect();
+            let filtered_str = serde_json::to_string(&serde_json::Value::Object(filtered))
+                .unwrap_or_else(|_| json_str.to_string());
+            return colorize_json_inner(&filtered_str);
+        }
     }
 
     colorize_json_inner(json_str)

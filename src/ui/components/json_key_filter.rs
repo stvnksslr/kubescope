@@ -209,19 +209,7 @@ impl JsonKeyFilter {
 }
 
 /// Collect all unique JSON keys from log entries
+/// Uses incrementally maintained key set from the buffer (O(1) vs O(n*m))
 pub fn collect_json_keys(log_buffer: &LogBuffer) -> Vec<String> {
-    use std::collections::BTreeSet;
-
-    let mut keys = BTreeSet::new();
-    let logs = log_buffer.all();
-
-    for entry in logs.iter() {
-        if let Some(fields) = &entry.fields {
-            for key in fields.keys() {
-                keys.insert(key.clone());
-            }
-        }
-    }
-
-    keys.into_iter().collect()
+    log_buffer.json_keys()
 }

@@ -411,7 +411,9 @@ async fn run_app(args: Args) -> Result<()> {
     // Create action channels
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (internal_tx, mut internal_rx) = mpsc::unbounded_channel::<InternalAction>();
-    let (log_tx, mut log_rx) = mpsc::unbounded_channel::<LogEntry>();
+    // Bounded channel for log entries - 2x buffer size provides headroom while preventing OOM
+    let channel_capacity = args.buffer_size * 2;
+    let (log_tx, mut log_rx) = mpsc::channel::<LogEntry>(channel_capacity);
 
     // Initialize state
     let mut state = AppState::new(action_tx.clone());
@@ -538,13 +540,23 @@ async fn run_app(args: Args) -> Result<()> {
         state.ui_state.filter_case_insensitive = args.ignore_case;
     }
 
-    // Initial render
+    // Adaptive render rate limiting state
+    let mut last_render_time = std::time::Instant::now();
+    let mut prev_dropped_count: u64 = 0;
+    let mut user_input_pending = false;
+
+    // Render intervals: normal (100ms) vs throttled when under load (250ms)
+    let normal_render_interval = Duration::from_millis(100);
+    let throttled_render_interval = Duration::from_millis(250);
+
+    // Initial render (no dropped logs yet since streams haven't started)
     render(
         &mut tui,
         &mut state,
         &log_buffer,
         &mut palette_state,
         &commands,
+        0, // dropped_count
     )?;
 
     // Main event loop
@@ -554,6 +566,9 @@ async fn run_app(args: Args) -> Result<()> {
             Some(event) = events.next() => {
                 match event {
                     Event::Key(key) => {
+                        // Mark that user input occurred - always render immediately
+                        user_input_pending = true;
+
                         // Check if command palette is open
                         if palette_state.visible {
                             if let Some(action) = keybindings.get_palette_action(&key) {
@@ -581,18 +596,24 @@ async fn run_app(args: Args) -> Result<()> {
                                 let _ = action_tx.send(action);
                             }
                         }
+                        // Note: render_dirty will be set when action is processed
                     }
                     Event::Tick => {
-                        // Re-render on tick to show new logs
+                        // Check if log count changed to trigger re-render
                         if state.current_screen == Screen::LogViewer {
-                            // Just trigger a render
+                            let current_count = log_buffer.len();
+                            if current_count != state.last_log_count {
+                                state.last_log_count = current_count;
+                                state.render_dirty = true;
+                            }
                         }
                     }
                     Event::Resize(_, _) => {
-                        let _ = action_tx.send(Action::Render);
+                        state.render_dirty = true;
                     }
                     Event::Error(e) => {
                         state.show_error(e);
+                        state.render_dirty = true;
                     }
                 }
             }
@@ -600,11 +621,13 @@ async fn run_app(args: Args) -> Result<()> {
             // Handle incoming log entries
             Some(entry) = log_rx.recv() => {
                 log_buffer.push(entry);
+                // Don't mark dirty here - tick handler will check for changes
             }
 
             // Handle user actions
             Some(action) = action_rx.recv() => {
                 handle_action(&mut state, &internal_tx, &log_buffer, &mut palette_state, &commands, action);
+                state.render_dirty = true;  // Actions always trigger re-render
             }
 
             // Handle internal async actions
@@ -733,6 +756,7 @@ async fn run_app(args: Args) -> Result<()> {
                         state.show_error(msg);
                     }
                 }
+                state.render_dirty = true;  // Internal actions trigger re-render
             }
         }
 
@@ -740,13 +764,41 @@ async fn run_app(args: Args) -> Result<()> {
             break;
         }
 
-        render(
-            &mut tui,
-            &mut state,
-            &log_buffer,
-            &mut palette_state,
-            &commands,
-        )?;
+        // Adaptive render rate limiting
+        let dropped_count = stream_manager.dropped_count();
+        let is_under_load = dropped_count > prev_dropped_count;
+        let elapsed = last_render_time.elapsed();
+
+        // Determine if we should render:
+        // - Always render on user input (responsive UI)
+        // - Under load: throttle to 250ms intervals
+        // - Normal: render at 100ms intervals when dirty
+        let should_render = if user_input_pending {
+            true // Always render immediately on user input
+        } else if !state.render_dirty {
+            false // Nothing changed, skip render
+        } else if is_under_load {
+            // Under load: only render if enough time has passed
+            elapsed >= throttled_render_interval
+        } else {
+            // Normal operation: render at normal interval
+            elapsed >= normal_render_interval
+        };
+
+        if should_render {
+            render(
+                &mut tui,
+                &mut state,
+                &log_buffer,
+                &mut palette_state,
+                &commands,
+                dropped_count,
+            )?;
+            state.render_dirty = false;
+            user_input_pending = false;
+            last_render_time = std::time::Instant::now();
+            prev_dropped_count = dropped_count;
+        }
     }
 
     // Cleanup
@@ -1114,6 +1166,7 @@ fn render(
     log_buffer: &LogBuffer,
     palette_state: &mut CommandPaletteState,
     commands: &[Command],
+    dropped_count: u64,
 ) -> Result<()> {
     tui.terminal().draw(|frame| {
         match state.current_screen {
@@ -1127,7 +1180,7 @@ fn render(
                 DeploymentSelectScreen::render(frame, state);
             }
             Screen::LogViewer => {
-                LogViewerScreen::render(frame, state, log_buffer);
+                LogViewerScreen::render(frame, state, log_buffer, dropped_count);
             }
         }
 

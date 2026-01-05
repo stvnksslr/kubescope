@@ -3,6 +3,10 @@
 use chrono::{DateTime, Utc};
 use ratatui::style::Color;
 use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Type alias for reference-counted log entries to avoid expensive clones
+pub type ArcLogEntry = Arc<LogEntry>;
 
 // ============================================================================
 // Kubernetes Resource Types
