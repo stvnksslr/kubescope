@@ -15,6 +15,32 @@ use crate::ui::Theme;
 /// Log viewer screen
 pub struct LogViewerScreen;
 
+/// Safely slice a string from a byte position, finding the nearest valid UTF-8 boundary
+fn safe_slice_from(s: &str, byte_pos: usize) -> &str {
+    if byte_pos >= s.len() {
+        return "";
+    }
+    // Find the next valid char boundary at or after byte_pos
+    let mut pos = byte_pos;
+    while pos < s.len() && !s.is_char_boundary(pos) {
+        pos += 1;
+    }
+    &s[pos..]
+}
+
+/// Safely truncate a string to a maximum byte length, finding the nearest valid UTF-8 boundary
+fn safe_truncate(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    // Find the last valid char boundary at or before max_bytes
+    let mut pos = max_bytes;
+    while pos > 0 && !s.is_char_boundary(pos) {
+        pos -= 1;
+    }
+    &s[..pos]
+}
+
 impl LogViewerScreen {
     pub fn render(
         frame: &mut Frame,
@@ -268,10 +294,14 @@ impl LogViewerScreen {
             .cloned()
             .collect();
 
+        // Calculate available width for message content (subtract borders and scrollbar)
+        let inner_width = area.width.saturating_sub(4) as usize; // 2 for borders, 2 for scrollbar
+
         // Build log lines with highlighting
+        // When JSON pretty print is enabled, each entry may produce multiple lines
         let lines: Vec<Line> = visible_logs
             .iter()
-            .map(|entry| Self::format_log_line(entry, state))
+            .flat_map(|entry| Self::format_log_lines(entry, state, inner_width))
             .collect();
 
         // Title shows filter status
@@ -393,13 +423,17 @@ impl LogViewerScreen {
         frame.render_widget(stats_widget, area);
     }
 
-    fn format_log_line<'a>(entry: &'a LogEntry, state: &AppState) -> Line<'a> {
-        let mut spans = Vec::new();
+    /// Format a log entry into one or more display lines
+    /// Returns multiple lines when JSON pretty print is enabled for JSON entries
+    fn format_log_lines(entry: &LogEntry, state: &AppState, available_width: usize) -> Vec<Line<'static>> {
+        let mut prefix_spans = Vec::new();
+        let mut prefix_width: usize = 0;
 
-        // Line number (compact)
-        spans.push(Span::styled(format!("{:>5}", entry.id), Theme::text_dim()));
+        // Line number (compact) - 5 chars
+        prefix_spans.push(Span::styled(format!("{:>5}", entry.id), Theme::text_dim()));
+        prefix_width += 5;
 
-        // Timestamp (if enabled and available)
+        // Timestamp (if enabled and available) - " HH:MM:SS" = 9 chars
         if state.ui_state.show_timestamps
             && let Some(ts) = &entry.timestamp
         {
@@ -408,56 +442,94 @@ impl LogViewerScreen {
             } else {
                 ts.format("%H:%M:%S").to_string()
             };
-            spans.push(Span::styled(format!(" {}", time_str), Theme::text_dim()));
+            prefix_spans.push(Span::styled(format!(" {}", time_str), Theme::text_dim()));
+            prefix_width += 9;
         }
 
-        // Pod name (if enabled)
+        // Pod name (if enabled) - " XXXXXXXXXX" = 11 chars
         if state.ui_state.show_pod_names {
-            spans.push(Span::styled(
+            prefix_spans.push(Span::styled(
                 format!(" {:>10}", entry.short_pod_name()),
                 Style::default().fg(pod_color(&entry.pod_name)),
             ));
+            prefix_width += 11;
         }
 
-        // Log level (fixed width)
-        spans.push(Span::styled(
+        // Log level (fixed width) - " XXX" = 4 chars
+        prefix_spans.push(Span::styled(
             format!(" {:>3}", entry.level.as_str()),
             Style::default()
                 .fg(entry.level.color())
                 .add_modifier(Modifier::BOLD),
         ));
+        prefix_width += 4;
 
-        // Separator
-        spans.push(Span::styled(" │ ", Theme::text_dim()));
+        // Separator - " │ " = 3 chars
+        prefix_spans.push(Span::styled(" │ ", Theme::text_dim()));
+        prefix_width += 3;
 
-        // Message content - handle JSON colorization
+        // Calculate remaining width for message content
+        let message_width = available_width.saturating_sub(prefix_width);
+
+        // Message content - handle JSON pretty printing
         if state.ui_state.json_pretty_print && entry.is_json {
             // Get JSON content (remove timestamp prefix if present)
             let json_str = if entry.timestamp.is_some() && entry.raw.len() > 31 {
-                &entry.raw[31..]
+                safe_slice_from(&entry.raw, 31)
             } else {
                 &entry.raw
             };
 
-            // Colorize the JSON with optional key filtering (pass pre-parsed fields to avoid re-parsing)
-            let json_spans = colorize_json(
+            // Pretty print the JSON with indentation
+            let pretty_json = format_json_pretty(
                 json_str,
                 &state.ui_state.json_visible_keys,
                 entry.fields.as_ref(),
             );
-            spans.extend(json_spans);
+
+            // Split into lines and create formatted output
+            let json_lines: Vec<&str> = pretty_json.lines().collect();
+            let mut result = Vec::new();
+
+            for (i, json_line) in json_lines.iter().enumerate() {
+                let mut line_spans = Vec::new();
+
+                if i == 0 {
+                    // First line gets the full prefix
+                    line_spans.extend(prefix_spans.clone());
+                } else {
+                    // Continuation lines get indentation to align with message
+                    line_spans.push(Span::styled(" ".repeat(prefix_width), Style::default()));
+                }
+
+                // Colorize the JSON line
+                let colored_spans = colorize_json_line(json_line);
+                line_spans.extend(colored_spans);
+
+                result.push(Line::from(line_spans));
+            }
+
+            if result.is_empty() {
+                // Fallback if no JSON content
+                let mut spans = prefix_spans;
+                spans.push(Span::styled(entry.raw.clone(), level_text_style(entry.level)));
+                return vec![Line::from(spans)];
+            }
+
+            result
         } else {
-            // Regular message handling
+            // Regular message handling (single line)
+            let mut spans = prefix_spans;
+
             let message = if entry.timestamp.is_some() && entry.raw.len() > 31 {
-                entry.raw[31..].to_string()
+                safe_slice_from(&entry.raw, 31).to_string()
             } else {
                 entry.raw.clone()
             };
 
-            // Truncate message if too long
-            let max_msg_len = 200;
-            let display_msg = if message.len() > max_msg_len {
-                format!("{}...", &message[..max_msg_len])
+            // Truncate message to fit viewport (use safe truncation for UTF-8)
+            let display_msg = if message.len() > message_width {
+                format!("{}...", safe_truncate(&message, message_width.saturating_sub(3)))
             } else {
                 message
             };
@@ -466,7 +538,6 @@ impl LogViewerScreen {
             if let Some(filter) = &state.ui_state.active_filter {
                 let matches = filter.find_matches(&display_msg);
                 if !matches.is_empty() {
-                    // Build spans with highlighted matches
                     let base_style = level_text_style(entry.level);
                     let highlight_style = Style::default()
                         .fg(Color::Black)
@@ -475,21 +546,18 @@ impl LogViewerScreen {
 
                     let mut last_end = 0;
                     for (start, end) in matches {
-                        // Add text before match
                         if start > last_end {
                             spans.push(Span::styled(
                                 display_msg[last_end..start].to_string(),
                                 base_style,
                             ));
                         }
-                        // Add highlighted match
                         spans.push(Span::styled(
                             display_msg[start..end].to_string(),
                             highlight_style,
                         ));
                         last_end = end;
                     }
-                    // Add remaining text after last match
                     if last_end < display_msg.len() {
                         spans.push(Span::styled(
                             display_msg[last_end..].to_string(),
@@ -502,9 +570,9 @@ impl LogViewerScreen {
             } else {
                 spans.push(Span::styled(display_msg, level_text_style(entry.level)));
             }
-        }
 
-        Line::from(spans)
+            vec![Line::from(spans)]
+        }
     }
 
     fn render_status_bar(
@@ -616,12 +684,172 @@ fn level_text_style(level: LogLevel) -> Style {
     }
 }
 
-/// Colorize JSON string into styled spans with optional key filtering
+/// Format JSON as pretty-printed multi-line string
+fn format_json_pretty(
+    json_str: &str,
+    visible_keys: &std::collections::HashSet<String>,
+    parsed_fields: Option<&std::collections::HashMap<String, serde_json::Value>>,
+) -> String {
+    // If we have key filters, filter first
+    if !visible_keys.is_empty() {
+        if let Some(fields) = parsed_fields {
+            let filtered: serde_json::Map<String, serde_json::Value> = fields
+                .iter()
+                .filter(|(k, _)| visible_keys.contains(*k))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            if filtered.is_empty() {
+                return "{}".to_string();
+            }
+
+            return serde_json::to_string_pretty(&serde_json::Value::Object(filtered))
+                .unwrap_or_else(|_| json_str.to_string());
+        }
+
+        // Fallback: parse and filter
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str)
+            && let serde_json::Value::Object(map) = parsed
+        {
+            let filtered: serde_json::Map<String, serde_json::Value> = map
+                .into_iter()
+                .filter(|(k, _)| visible_keys.contains(k))
+                .collect();
+            return serde_json::to_string_pretty(&serde_json::Value::Object(filtered))
+                .unwrap_or_else(|_| json_str.to_string());
+        }
+    }
+
+    // No filtering - just pretty print
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
+        serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| json_str.to_string())
+    } else {
+        json_str.to_string()
+    }
+}
+
+/// Colorize a single line of JSON (for pretty-printed output)
+fn colorize_json_line(line: &str) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut chars = line.chars().peekable();
+    let mut current = String::new();
+
+    let brace_style = Style::default().fg(Color::White);
+    let key_style = Style::default().fg(Color::Cyan);
+    let string_style = Style::default().fg(Color::Green);
+    let number_style = Style::default().fg(Color::Yellow);
+    let bool_style = Style::default().fg(Color::Magenta);
+    let null_style = Style::default().fg(Color::Red);
+    let punct_style = Style::default().fg(Color::DarkGray);
+
+    // Track if we're expecting a key (after { or ,)
+    let trimmed = line.trim_start();
+    let expecting_key = trimmed.starts_with('"') &&
+        (line.contains(':') || trimmed.ends_with(',') || trimmed.ends_with('{'));
+
+    while let Some(c) = chars.next() {
+        match c {
+            ' ' => {
+                if !current.is_empty() {
+                    spans.push(Span::styled(current.clone(), punct_style));
+                    current.clear();
+                }
+                spans.push(Span::styled(" ".to_string(), Style::default()));
+            }
+            '{' | '}' | '[' | ']' => {
+                if !current.is_empty() {
+                    spans.push(Span::styled(current.clone(), punct_style));
+                    current.clear();
+                }
+                spans.push(Span::styled(c.to_string(), brace_style));
+            }
+            ':' | ',' => {
+                if !current.is_empty() {
+                    spans.push(Span::styled(current.clone(), punct_style));
+                    current.clear();
+                }
+                spans.push(Span::styled(c.to_string(), punct_style));
+            }
+            '"' => {
+                let mut s = String::from("\"");
+                while let Some(sc) = chars.next() {
+                    s.push(sc);
+                    if sc == '"' {
+                        break;
+                    }
+                    if sc == '\\' {
+                        if let Some(escaped) = chars.next() {
+                            s.push(escaped);
+                        }
+                    }
+                }
+                // Check if this is a key (followed by colon)
+                let is_key = chars.clone().any(|c| c == ':');
+                let style = if is_key || expecting_key { key_style } else { string_style };
+                spans.push(Span::styled(s, style));
+            }
+            't' | 'f' => {
+                let mut word = String::from(c);
+                while let Some(&next) = chars.peek() {
+                    if next.is_alphabetic() {
+                        word.push(chars.next().unwrap());
+                    } else {
+                        break;
+                    }
+                }
+                if word == "true" || word == "false" {
+                    spans.push(Span::styled(word, bool_style));
+                } else {
+                    spans.push(Span::styled(word, punct_style));
+                }
+            }
+            'n' => {
+                let mut word = String::from(c);
+                while let Some(&next) = chars.peek() {
+                    if next.is_alphabetic() {
+                        word.push(chars.next().unwrap());
+                    } else {
+                        break;
+                    }
+                }
+                if word == "null" {
+                    spans.push(Span::styled(word, null_style));
+                } else {
+                    spans.push(Span::styled(word, punct_style));
+                }
+            }
+            '0'..='9' | '-' => {
+                let mut num = String::from(c);
+                while let Some(&next) = chars.peek() {
+                    if next.is_ascii_digit() || next == '.' || next == 'e' || next == 'E' || next == '+' || next == '-' {
+                        num.push(chars.next().unwrap());
+                    } else {
+                        break;
+                    }
+                }
+                spans.push(Span::styled(num, number_style));
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        spans.push(Span::styled(current, punct_style));
+    }
+
+    spans
+}
+
+/// Colorize JSON string into styled spans with optional key filtering (for single-line display)
 /// Uses pre-parsed fields when available to avoid re-parsing JSON
+#[allow(dead_code)]
 fn colorize_json(
     json_str: &str,
     visible_keys: &std::collections::HashSet<String>,
     parsed_fields: Option<&std::collections::HashMap<String, serde_json::Value>>,
+    max_width: usize,
 ) -> Vec<Span<'static>> {
     // If we have key filters and pre-parsed fields, use them to avoid re-parsing
     if !visible_keys.is_empty() {
@@ -640,7 +868,7 @@ fn colorize_json(
 
             let filtered_str = serde_json::to_string(&serde_json::Value::Object(filtered))
                 .unwrap_or_else(|_| json_str.to_string());
-            return colorize_json_inner(&filtered_str);
+            return colorize_json_inner(&filtered_str, max_width);
         }
 
         // Fallback: parse JSON if fields not pre-parsed (shouldn't happen for JSON logs)
@@ -653,15 +881,15 @@ fn colorize_json(
                 .collect();
             let filtered_str = serde_json::to_string(&serde_json::Value::Object(filtered))
                 .unwrap_or_else(|_| json_str.to_string());
-            return colorize_json_inner(&filtered_str);
+            return colorize_json_inner(&filtered_str, max_width);
         }
     }
 
-    colorize_json_inner(json_str)
+    colorize_json_inner(json_str, max_width)
 }
 
 /// Inner JSON colorization function
-fn colorize_json_inner(json_str: &str) -> Vec<Span<'static>> {
+fn colorize_json_inner(json_str: &str, max_width: usize) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     let mut chars = json_str.chars().peekable();
     let mut current = String::new();
@@ -675,7 +903,8 @@ fn colorize_json_inner(json_str: &str) -> Vec<Span<'static>> {
     let null_style = Style::default().fg(Color::Red);
     let punct_style = Style::default().fg(Color::DarkGray);
 
-    let max_len = 300; // Limit total length
+    // Use viewport-aware max length (leave room for "...")
+    let max_len = max_width.saturating_sub(3).max(10);
     let mut total_len = 0;
 
     while let Some(c) = chars.next() {
