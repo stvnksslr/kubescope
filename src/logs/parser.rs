@@ -35,8 +35,10 @@ impl LogParser {
         // K8s timestamp format: 2024-01-15T10:30:00.123456789Z (30 chars)
         // Sometimes shorter: 2024-01-15T10:30:00Z (20 chars)
         if raw.len() >= 20 {
-            // Find the 'Z' that ends the timestamp
-            if let Some(z_pos) = raw[..raw.len().min(35)].find('Z') {
+            // Find the 'Z' that ends the timestamp within first ~35 chars
+            // Use get() to safely handle UTF-8 multi-byte chars at boundaries
+            let search_end = Self::floor_char_boundary(raw, 35.min(raw.len()));
+            if let Some(z_pos) = raw.get(..search_end).and_then(|s| s.find('Z')) {
                 let ts_str = &raw[..=z_pos];
                 if let Ok(ts) = DateTime::parse_from_rfc3339(ts_str) {
                     let remaining = raw[z_pos + 1..].trim_start();
@@ -45,6 +47,18 @@ impl LogParser {
             }
         }
         (None, raw)
+    }
+
+    /// Find the largest valid char boundary <= the given byte index
+    fn floor_char_boundary(s: &str, mut idx: usize) -> usize {
+        if idx >= s.len() {
+            return s.len();
+        }
+        // Walk backwards to find a valid char boundary
+        while idx > 0 && !s.is_char_boundary(idx) {
+            idx -= 1;
+        }
+        idx
     }
 
     /// Try to parse content as JSON and extract fields
@@ -216,5 +230,19 @@ mod tests {
         let line = "[ERROR] something went wrong";
         let entry = LogParser::parse(line, "test-pod", 1);
         assert_eq!(entry.level, LogLevel::Error);
+    }
+
+    #[test]
+    fn test_parse_multibyte_utf8_no_panic() {
+        // Box-drawing characters are 3 bytes each, this tests UTF-8 boundary handling
+        let line = "─────────────────────────────────────────";
+        let entry = LogParser::parse(line, "test-pod", 1);
+        // Should not panic, timestamp should be None since it's not a valid timestamp
+        assert!(entry.timestamp.is_none());
+
+        // Test with timestamp-like content mixed with multibyte chars
+        let line2 = "2024-01-15T10:30:00Z ╭────────────────────────────╮";
+        let entry2 = LogParser::parse(line2, "test-pod", 2);
+        assert!(entry2.timestamp.is_some());
     }
 }

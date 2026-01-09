@@ -267,50 +267,80 @@ impl LogViewerScreen {
             );
         }
 
-        let total_logs = state.ui_state.filter_cache.cached_entries.len();
+        let total_entries = state.ui_state.filter_cache.cached_entries.len();
 
         // Calculate visible area (accounting for border)
         let inner_height = area.height.saturating_sub(2) as usize;
-
-        // Auto-scroll: if at bottom, stay at bottom
-        if state.ui_state.auto_scroll && total_logs > 0 {
-            state.ui_state.log_scroll = total_logs.saturating_sub(inner_height);
-        }
-
-        // Clamp scroll position
-        let max_scroll = total_logs.saturating_sub(inner_height);
-        if state.ui_state.log_scroll > max_scroll {
-            state.ui_state.log_scroll = max_scroll;
-        }
-
-        // Get visible logs from cache (viewport-first: skip/take from cached results)
-        let visible_logs: Vec<ArcLogEntry> = state
-            .ui_state
-            .filter_cache
-            .cached_entries
-            .iter()
-            .skip(state.ui_state.log_scroll)
-            .take(inner_height)
-            .cloned()
-            .collect();
-
-        // Calculate available width for message content (subtract borders and scrollbar)
         let inner_width = area.width.saturating_sub(4) as usize; // 2 for borders, 2 for scrollbar
 
-        // Build log lines with highlighting
-        // When JSON pretty print is enabled, each entry may produce multiple lines
-        let lines: Vec<Line> = visible_logs
-            .iter()
-            .flat_map(|entry| Self::format_log_lines(entry, state, inner_width))
-            .collect();
+        // When JSON pretty print is enabled, we need line-based scrolling
+        // because each entry can produce multiple lines
+        let (lines, total_lines, scroll_position, max_scroll) = if state.ui_state.json_pretty_print {
+            // Pre-compute all lines to get accurate count and enable line-based scrolling
+            let all_lines: Vec<Line> = state
+                .ui_state
+                .filter_cache
+                .cached_entries
+                .iter()
+                .flat_map(|entry| Self::format_log_lines(entry, state, inner_width))
+                .collect();
+
+            let total_lines = all_lines.len();
+            let max_scroll = total_lines.saturating_sub(inner_height);
+
+            // Auto-scroll: if at bottom, stay at bottom
+            if state.ui_state.auto_scroll && total_lines > 0 {
+                state.ui_state.log_scroll = max_scroll;
+            }
+
+            // Clamp scroll position
+            if state.ui_state.log_scroll > max_scroll {
+                state.ui_state.log_scroll = max_scroll;
+            }
+
+            // Get visible lines (line-based viewport)
+            let visible_lines: Vec<Line> = all_lines
+                .into_iter()
+                .skip(state.ui_state.log_scroll)
+                .take(inner_height)
+                .collect();
+
+            (visible_lines, total_lines, state.ui_state.log_scroll, max_scroll)
+        } else {
+            // Entry-based scrolling (1 entry = 1 line)
+            let max_scroll = total_entries.saturating_sub(inner_height);
+
+            // Auto-scroll: if at bottom, stay at bottom
+            if state.ui_state.auto_scroll && total_entries > 0 {
+                state.ui_state.log_scroll = max_scroll;
+            }
+
+            // Clamp scroll position
+            if state.ui_state.log_scroll > max_scroll {
+                state.ui_state.log_scroll = max_scroll;
+            }
+
+            // Get visible logs from cache (viewport-first: skip/take from cached results)
+            let visible_lines: Vec<Line> = state
+                .ui_state
+                .filter_cache
+                .cached_entries
+                .iter()
+                .skip(state.ui_state.log_scroll)
+                .take(inner_height)
+                .flat_map(|entry| Self::format_log_lines(entry, state, inner_width))
+                .collect();
+
+            (visible_lines, total_entries, state.ui_state.log_scroll, max_scroll)
+        };
 
         // Title shows filter status
         let title = if state.ui_state.active_filter.is_some()
             || !state.ui_state.json_visible_keys.is_empty()
         {
-            format!(" Logs ({} matching) ", total_logs)
+            format!(" Logs ({} matching) ", total_entries)
         } else {
-            format!(" Logs ({}) ", total_logs)
+            format!(" Logs ({}) ", total_entries)
         };
 
         let logs_widget = Paragraph::new(lines).block(
@@ -323,13 +353,11 @@ impl LogViewerScreen {
         frame.render_widget(logs_widget, area);
 
         // Render scrollbar
-        if total_logs > inner_height {
+        if total_lines > inner_height {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("▲"))
                 .end_symbol(Some("▼"));
 
-            // Calculate scrollbar position as percentage of scrollable range
-            let scroll_position = state.ui_state.log_scroll.min(max_scroll);
             let mut scrollbar_state = ScrollbarState::default()
                 .content_length(max_scroll)
                 .position(scroll_position);

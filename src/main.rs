@@ -12,6 +12,7 @@ mod app;
 mod config;
 mod k8s;
 mod logs;
+mod token_cache;
 mod tui;
 mod types;
 mod ui;
@@ -383,6 +384,8 @@ async fn run_init() -> Result<()> {
 
 /// Internal actions for async operations
 enum InternalAction {
+    LoadContexts,
+    ContextsLoaded(Vec<types::ContextInfo>),
     LoadNamespaces(String),
     LoadDeployments(String),
     LoadPods(String, DeploymentInfo),
@@ -418,10 +421,6 @@ async fn run_app(args: Args) -> Result<()> {
     // Initialize state
     let mut state = AppState::new(action_tx.clone());
 
-    // Load kubeconfig and contexts
-    let kube_client = KubeClient::new().await?;
-    state.contexts = kube_client.get_contexts();
-
     // Track the active K8s client for the selected context
     let mut active_client: Option<kube::Client> = None;
 
@@ -429,99 +428,105 @@ async fn run_app(args: Args) -> Result<()> {
     let log_buffer = LogBuffer::new(args.buffer_size);
     let mut stream_manager = LogStreamManager::new();
 
-    // Initialize TUI
-    let mut tui = Tui::new()?;
-
-    // Initialize event handler
-    let mut events = EventHandler::new(Duration::from_millis(100));
-
-    // Initialize keybindings
-    let keybindings = KeyBindings::new();
-
-    // Command palette
-    let mut palette_state = CommandPaletteState::default();
-    let commands = log_viewer_commands();
+    // Load kubeconfig
+    let kube_client = KubeClient::new().await?;
 
     // Handle CLI arguments for direct navigation
-    if let Some(context_name) = &args.context {
-        // Validate context exists
-        if !state.contexts.iter().any(|c| &c.name == context_name) {
-            anyhow::bail!("Context '{}' not found in kubeconfig", context_name);
-        }
-
-        // Connect to context and load namespaces
+    // Fast path: when all three args (context, namespace, deployment) are provided,
+    // skip listing resources and fetch directly to minimize startup time
+    if let (Some(context_name), Some(namespace_name), Some(deployment_name)) =
+        (&args.context, &args.namespace, &args.deployment)
+    {
+        // Fast path: all args provided - skip validation lists, fetch directly
+        // This avoids listing all namespaces and all deployments (saves ~1s on EKS)
+        // Also skip loading contexts list (will be loaded lazily if user navigates back)
         let client = kube_client.client_for_context(context_name).await?;
-        let namespaces = kube_client.get_namespaces(&client).await?;
 
+        // Fetch deployment directly by name (not listing all)
+        let deployment = kube_client
+            .get_deployment(&client, namespace_name, deployment_name)
+            .await?;
+
+        // Fetch pods for deployment
+        let pods = kube_client
+            .get_pods_for_deployment(&client, namespace_name, &deployment)
+            .await?;
+
+        // Set up state for log viewer
         state.selected_context = Some(context_name.clone());
-        state.namespaces = namespaces;
+        state.selected_namespace = Some(namespace_name.clone());
+        state.selected_deployment = Some(deployment_name.clone());
+        state.deployments = vec![deployment];
+        state.pods = pods;
+        state.screen_stack.push(Screen::ContextSelect);
+        state.screen_stack.push(Screen::NamespaceSelect);
+        state.screen_stack.push(Screen::DeploymentSelect);
+        state.current_screen = Screen::LogViewer;
         active_client = Some(client.clone());
 
-        if let Some(namespace_name) = &args.namespace {
-            // Validate namespace exists
-            if !state.namespaces.iter().any(|n| &n.name == namespace_name) {
-                anyhow::bail!(
-                    "Namespace '{}' not found in context '{}'",
-                    namespace_name,
-                    context_name
-                );
+        // Start log streaming
+        log_buffer.clear();
+        let since_seconds = state.ui_state.time_range.as_seconds();
+        stream_manager.start_streams(
+            client,
+            namespace_name,
+            &state.pods,
+            log_tx.clone(),
+            Some(args.tail_lines),
+            since_seconds,
+        );
+    } else {
+        // Non-fast path: load contexts for navigation
+        state.contexts = kube_client.get_contexts();
+
+        if let Some(context_name) = &args.context {
+            // Partial args path: need to load some lists for navigation
+            // Validate context exists
+            if !state.contexts.iter().any(|c| &c.name == context_name) {
+                anyhow::bail!("Context '{}' not found in kubeconfig", context_name);
             }
 
-            // Load deployments
-            let deployments = kube_client.get_deployments(&client, namespace_name).await?;
-            state.selected_namespace = Some(namespace_name.clone());
-            state.deployments = deployments;
-            state.screen_stack.push(Screen::ContextSelect);
+            // Connect to context and load namespaces
+            let client = kube_client.client_for_context(context_name).await?;
+            let namespaces = kube_client.get_namespaces(&client).await?;
 
-            if let Some(deployment_name) = &args.deployment {
-                // Validate deployment exists
-                let deployment = state
-                    .deployments
-                    .iter()
-                    .find(|d| &d.name == deployment_name)
-                    .cloned();
+            state.selected_context = Some(context_name.clone());
+            state.namespaces = namespaces;
+            active_client = Some(client.clone());
 
-                if let Some(deployment) = deployment {
-                    // Load pods and go directly to log viewer
-                    let pods = kube_client
-                        .get_pods_for_deployment(&client, namespace_name, &deployment)
-                        .await?;
-
-                    state.selected_deployment = Some(deployment_name.clone());
-                    state.pods = pods;
-                    state.screen_stack.push(Screen::NamespaceSelect);
-                    state.screen_stack.push(Screen::DeploymentSelect);
-                    state.current_screen = Screen::LogViewer;
-
-                    // Start log streaming
-                    log_buffer.clear();
-                    let since_seconds = state.ui_state.time_range.as_seconds();
-                    stream_manager.start_streams(
-                        client,
-                        namespace_name,
-                        &state.pods,
-                        log_tx.clone(),
-                        Some(args.tail_lines),
-                        since_seconds,
-                    );
-                } else {
+            if let Some(namespace_name) = &args.namespace {
+                // Validate namespace exists
+                if !state.namespaces.iter().any(|n| &n.name == namespace_name) {
                     anyhow::bail!(
-                        "Deployment '{}' not found in namespace '{}'",
-                        deployment_name,
-                        namespace_name
+                        "Namespace '{}' not found in context '{}'",
+                        namespace_name,
+                        context_name
                     );
                 }
-            } else {
-                // Go to deployment select
+
+                // Load deployments (need full list for deployment select screen)
+                let deployments = kube_client.get_deployments(&client, namespace_name).await?;
+                state.selected_namespace = Some(namespace_name.clone());
+                state.deployments = deployments;
+                state.screen_stack.push(Screen::ContextSelect);
+
+                // Go to deployment select (deployment not provided)
                 state.screen_stack.push(Screen::NamespaceSelect);
                 state.current_screen = Screen::DeploymentSelect;
+            } else {
+                // Go to namespace select
+                state.screen_stack.push(Screen::ContextSelect);
+                state.current_screen = Screen::NamespaceSelect;
             }
-        } else {
-            // Go to namespace select
-            state.screen_stack.push(Screen::ContextSelect);
-            state.current_screen = Screen::NamespaceSelect;
         }
     }
+
+    // Initialize TUI and event handler (after K8s operations to minimize time-to-first-render)
+    let mut tui = Tui::new()?;
+    let mut events = EventHandler::new(Duration::from_millis(100));
+    let keybindings = KeyBindings::new();
+    let mut palette_state = CommandPaletteState::default();
+    let commands = log_viewer_commands();
 
     // Apply CLI filter if provided (already validated at startup)
     if let Some(filter_pattern) = &args.filter {
@@ -633,6 +638,17 @@ async fn run_app(args: Args) -> Result<()> {
             // Handle internal async actions
             Some(internal) = internal_rx.recv() => {
                 match internal {
+                    InternalAction::LoadContexts => {
+                        // Lazy load contexts (used when navigating back in fast path)
+                        let contexts = kube_client.get_contexts();
+                        let _ = internal_tx.send(InternalAction::ContextsLoaded(contexts));
+                    }
+
+                    InternalAction::ContextsLoaded(contexts) => {
+                        state.contexts = contexts;
+                        // Already on ContextSelect screen, just refresh
+                    }
+
                     InternalAction::LoadNamespaces(context_name) => {
                         match kube_client.client_for_context(&context_name).await {
                             Ok(client) => {
@@ -837,6 +853,11 @@ fn handle_action(
             }
             if !state.go_back() {
                 state.should_quit = true;
+            }
+            // Lazy load contexts if we navigated back to ContextSelect with empty contexts
+            // (happens in fast path where contexts weren't loaded at startup)
+            if state.current_screen == Screen::ContextSelect && state.contexts.is_empty() {
+                let _ = internal_tx.send(InternalAction::LoadContexts);
             }
         }
         Action::Navigate(screen) => {
