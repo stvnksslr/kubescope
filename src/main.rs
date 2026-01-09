@@ -574,6 +574,14 @@ async fn run_app(args: Args) -> Result<()> {
                         // Mark that user input occurred - always render immediately
                         user_input_pending = true;
 
+                        // If help overlay is visible, Esc closes it instead of going back
+                        if state.ui_state.help_visible {
+                            if key.code == crossterm::event::KeyCode::Esc || key.code == crossterm::event::KeyCode::Char('?') {
+                                state.ui_state.help_visible = false;
+                                continue;
+                            }
+                        }
+
                         // Check if command palette is open
                         if palette_state.visible {
                             if let Some(action) = keybindings.get_palette_action(&key) {
