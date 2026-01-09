@@ -3,7 +3,6 @@
 //! Caches AWS EKS tokens to avoid repeated slow exec calls to `aws eks get-token`.
 //! Tokens are cached per cluster with a 5-minute TTL (EKS tokens are valid for 15 minutes).
 
-use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -41,30 +40,31 @@ pub struct TokenCache {
 
 impl TokenCache {
     /// Get the cache file path
-    fn cache_path() -> Result<PathBuf> {
-        let home = dirs::home_dir().context("Could not determine home directory")?;
+    fn cache_path() -> Option<PathBuf> {
+        let home = dirs::home_dir()?;
         let cache_dir = home.join(".kubescope");
-        Ok(cache_dir.join("token-cache.json"))
+        Some(cache_dir.join("token-cache.json"))
     }
 
     /// Load the token cache from disk
     pub fn load() -> Self {
         Self::cache_path()
-            .ok()
             .and_then(|path| fs::read_to_string(path).ok())
             .and_then(|content| serde_json::from_str(&content).ok())
             .unwrap_or_default()
     }
 
     /// Save the token cache to disk
-    pub fn save(&self) -> Result<()> {
-        let path = Self::cache_path()?;
+    pub fn save(&self) {
+        let Some(path) = Self::cache_path() else {
+            return;
+        };
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+            let _ = fs::create_dir_all(parent);
         }
-        let content = serde_json::to_string_pretty(self)?;
-        fs::write(path, content)?;
-        Ok(())
+        if let Ok(content) = serde_json::to_string_pretty(self) {
+            let _ = fs::write(path, content);
+        }
     }
 
     /// Get a cached token for a cluster if valid
@@ -95,64 +95,27 @@ impl TokenCache {
     }
 }
 
-/// AWS EKS get-token response format
-#[derive(Debug, Deserialize)]
-struct EksTokenResponse {
-    status: EksTokenStatus,
+/// Get a cached token for a cluster (read-only, doesn't fetch new tokens)
+/// Returns None if no valid cached token exists
+pub fn get_cached_token(cluster_name: &str) -> Option<String> {
+    let cache = TokenCache::load();
+    cache.get(cluster_name).map(|t| t.token.clone())
 }
 
-#[derive(Debug, Deserialize)]
-struct EksTokenStatus {
-    token: String,
-    // Note: expirationTimestamp is available but we use our own TTL for simplicity
-    #[serde(rename = "expirationTimestamp")]
-    #[allow(dead_code)]
-    expiration_timestamp: String,
-}
-
-/// Get an EKS token for a cluster, using cache if available
-pub async fn get_eks_token(cluster_name: &str) -> Result<String> {
-    // Try to get from cache first
+/// Clear the cached token for a cluster (used when cached token is invalid)
+pub fn clear_token(cluster_name: &str) {
     let mut cache = TokenCache::load();
-    if let Some(cached) = cache.get(cluster_name) {
-        return Ok(cached.token.clone());
-    }
-
-    // Not in cache or expired, get fresh token
-    let token = fetch_eks_token(cluster_name).await?;
-
-    // Cache the token
-    cache.set(cluster_name.to_string(), token.clone());
+    cache.tokens.remove(cluster_name);
     cache.cleanup();
-    let _ = cache.save(); // Ignore save errors
-
-    Ok(token)
+    cache.save();
 }
 
-/// Fetch a fresh EKS token using aws CLI
-async fn fetch_eks_token(cluster_name: &str) -> Result<String> {
-    let output = tokio::process::Command::new("aws")
-        .args([
-            "eks",
-            "get-token",
-            "--cluster-name",
-            cluster_name,
-            "--output",
-            "json",
-        ])
-        .output()
-        .await
-        .context("Failed to run aws eks get-token")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("aws eks get-token failed: {}", stderr);
-    }
-
-    let response: EksTokenResponse = serde_json::from_slice(&output.stdout)
-        .context("Failed to parse aws eks get-token output")?;
-
-    Ok(response.status.token)
+/// Store a token in the cache after successful authentication
+pub fn cache_token(cluster_name: &str, token: &str) {
+    let mut cache = TokenCache::load();
+    cache.set(cluster_name.to_string(), token.to_string());
+    cache.cleanup();
+    cache.save();
 }
 
 /// Extract cluster name from kubeconfig context

@@ -52,7 +52,7 @@ impl KubeClient {
     /// Uses token caching for EKS clusters to avoid slow exec calls on repeated startups
     pub async fn client_for_context(&self, context_name: &str) -> Result<kube::Client> {
         // Check if this is an EKS cluster and try to use cached token
-        let kubeconfig = self.try_with_cached_token(context_name).await;
+        let (kubeconfig, used_cache) = self.try_with_cached_token(context_name).await;
 
         let config = kube::Config::from_custom_kubeconfig(
             kubeconfig,
@@ -67,30 +67,118 @@ impl KubeClient {
             context_name
         ))?;
 
-        kube::Client::try_from(config).context(format!(
+        let client = kube::Client::try_from(config).context(format!(
             "Failed to create client for context: {}",
             context_name
-        ))
+        ))?;
+
+        // If we used a cached token, validate it with a simple API call
+        // If validation fails, clear cache and retry with fresh auth
+        if used_cache {
+            if let Err(_e) = self.validate_client(&client).await {
+                // Clear cached token for this cluster and retry
+                if let Some(cluster_name) =
+                    token_cache::extract_eks_cluster_name(&self.kubeconfig, context_name)
+                {
+                    token_cache::clear_token(&cluster_name);
+                }
+
+                // Retry with fresh auth (no cache)
+                let config = kube::Config::from_custom_kubeconfig(
+                    self.kubeconfig.clone(),
+                    &KubeConfigOptions {
+                        context: Some(context_name.to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .context(format!(
+                    "Failed to create config for context: {}",
+                    context_name
+                ))?;
+
+                let client = kube::Client::try_from(config).context(format!(
+                    "Failed to create client for context: {}",
+                    context_name
+                ))?;
+
+                // Cache the fresh token for next time
+                self.cache_fresh_token(context_name).await;
+
+                return Ok(client);
+            }
+        } else {
+            // No cache was used - cache the token for next time
+            self.cache_fresh_token(context_name).await;
+        }
+
+        Ok(client)
+    }
+
+    /// Cache a fresh token for an EKS cluster after successful auth
+    async fn cache_fresh_token(&self, context_name: &str) {
+        // Only cache for EKS clusters
+        let Some(cluster_name) =
+            token_cache::extract_eks_cluster_name(&self.kubeconfig, context_name)
+        else {
+            return;
+        };
+
+        // Fetch fresh token using aws CLI and cache it
+        if let Ok(output) = tokio::process::Command::new("aws")
+            .args([
+                "eks",
+                "get-token",
+                "--cluster-name",
+                &cluster_name,
+                "--output",
+                "json",
+            ])
+            .output()
+            .await
+        {
+            if output.status.success() {
+                if let Ok(response) =
+                    serde_json::from_slice::<serde_json::Value>(&output.stdout)
+                {
+                    if let Some(token) = response
+                        .get("status")
+                        .and_then(|s| s.get("token"))
+                        .and_then(|t| t.as_str())
+                    {
+                        token_cache::cache_token(&cluster_name, token);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Validate that the client can make API calls (used to verify cached tokens)
+    async fn validate_client(&self, client: &kube::Client) -> Result<()> {
+        use k8s_openapi::api::core::v1::Namespace;
+        let ns: Api<Namespace> = Api::all(client.clone());
+        // Just try to list with limit 1 to validate auth
+        ns.list(&ListParams::default().limit(1)).await?;
+        Ok(())
     }
 
     /// Try to use a cached token for EKS clusters
-    /// Returns modified kubeconfig with token if cached, otherwise returns original
-    async fn try_with_cached_token(&self, context_name: &str) -> Kubeconfig {
+    /// Returns (kubeconfig, used_cache) - kubeconfig may be modified with cached token
+    async fn try_with_cached_token(&self, context_name: &str) -> (Kubeconfig, bool) {
         // Check if this is an EKS cluster
         let Some(cluster_name) =
             token_cache::extract_eks_cluster_name(&self.kubeconfig, context_name)
         else {
-            return self.kubeconfig.clone();
+            return (self.kubeconfig.clone(), false);
         };
 
-        // Try to get cached token
-        let token = match token_cache::get_eks_token(&cluster_name).await {
-            Ok(token) => token,
-            Err(_) => return self.kubeconfig.clone(),
+        // Try to get cached token (only from cache, don't fetch new)
+        let Some(token) = token_cache::get_cached_token(&cluster_name) else {
+            return (self.kubeconfig.clone(), false);
         };
 
         // Create modified kubeconfig with token instead of exec
-        self.kubeconfig_with_token(context_name, &token)
+        (self.kubeconfig_with_token(context_name, &token), true)
     }
 
     /// Create a copy of kubeconfig with token-based auth instead of exec
