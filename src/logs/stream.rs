@@ -42,11 +42,6 @@ impl LogStreamManager {
         self.dropped_count.load(Ordering::Relaxed)
     }
 
-    /// Reset the dropped log counter
-    pub fn reset_dropped_count(&self) {
-        self.dropped_count.store(0, Ordering::Relaxed);
-    }
-
     /// Start streaming logs from all pods
     pub fn start_streams(
         &mut self,

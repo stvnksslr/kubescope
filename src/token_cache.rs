@@ -132,7 +132,14 @@ pub async fn get_eks_token(cluster_name: &str) -> Result<String> {
 /// Fetch a fresh EKS token using aws CLI
 async fn fetch_eks_token(cluster_name: &str) -> Result<String> {
     let output = tokio::process::Command::new("aws")
-        .args(["eks", "get-token", "--cluster-name", cluster_name, "--output", "json"])
+        .args([
+            "eks",
+            "get-token",
+            "--cluster-name",
+            cluster_name,
+            "--output",
+            "json",
+        ])
         .output()
         .await
         .context("Failed to run aws eks get-token")?;
@@ -150,14 +157,23 @@ async fn fetch_eks_token(cluster_name: &str) -> Result<String> {
 
 /// Extract cluster name from kubeconfig context
 /// Returns None if not an EKS cluster or cluster name can't be determined
-pub fn extract_eks_cluster_name(kubeconfig: &kube::config::Kubeconfig, context_name: &str) -> Option<String> {
+pub fn extract_eks_cluster_name(
+    kubeconfig: &kube::config::Kubeconfig,
+    context_name: &str,
+) -> Option<String> {
     // Find the context
-    let context = kubeconfig.contexts.iter().find(|c| c.name == context_name)?;
+    let context = kubeconfig
+        .contexts
+        .iter()
+        .find(|c| c.name == context_name)?;
     let context_data = context.context.as_ref()?;
     let cluster_name = &context_data.cluster;
 
     // Find the cluster config
-    let cluster = kubeconfig.clusters.iter().find(|c| &c.name == cluster_name)?;
+    let cluster = kubeconfig
+        .clusters
+        .iter()
+        .find(|c| &c.name == cluster_name)?;
     let cluster_data = cluster.cluster.as_ref()?;
 
     // Check if it's an EKS cluster by looking at the server URL
@@ -168,7 +184,10 @@ pub fn extract_eks_cluster_name(kubeconfig: &kube::config::Kubeconfig, context_n
 
     // Find the auth info to check for exec config
     let user_name = context_data.user.as_ref()?;
-    let auth_info = kubeconfig.auth_infos.iter().find(|a| &a.name == user_name)?;
+    let auth_info = kubeconfig
+        .auth_infos
+        .iter()
+        .find(|a| &a.name == user_name)?;
     let auth_data = auth_info.auth_info.as_ref()?;
 
     // Check if using exec with aws

@@ -76,12 +76,6 @@ impl FilterCache {
         self.cached_entries = entries;
         self.is_valid = true;
     }
-
-    /// Invalidate the cache
-    pub fn invalidate(&mut self) {
-        self.is_valid = false;
-        self.cached_entries.clear();
-    }
 }
 
 /// Screen enumeration
@@ -274,11 +268,6 @@ impl AppState {
             render_dirty: true, // Start dirty to ensure initial render
             last_log_count: 0,
         }
-    }
-
-    /// Mark the UI as needing a re-render
-    pub fn mark_dirty(&mut self) {
-        self.render_dirty = true;
     }
 
     /// Navigate to a new screen, pushing current to stack

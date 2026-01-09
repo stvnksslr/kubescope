@@ -275,7 +275,8 @@ impl LogViewerScreen {
 
         // When JSON pretty print is enabled, we need line-based scrolling
         // because each entry can produce multiple lines
-        let (lines, total_lines, scroll_position, max_scroll) = if state.ui_state.json_pretty_print {
+        let (lines, total_lines, scroll_position, max_scroll) = if state.ui_state.json_pretty_print
+        {
             // Pre-compute all lines to get accurate count and enable line-based scrolling
             let all_lines: Vec<Line> = state
                 .ui_state
@@ -305,7 +306,12 @@ impl LogViewerScreen {
                 .take(inner_height)
                 .collect();
 
-            (visible_lines, total_lines, state.ui_state.log_scroll, max_scroll)
+            (
+                visible_lines,
+                total_lines,
+                state.ui_state.log_scroll,
+                max_scroll,
+            )
         } else {
             // Entry-based scrolling (1 entry = 1 line)
             let max_scroll = total_entries.saturating_sub(inner_height);
@@ -331,7 +337,12 @@ impl LogViewerScreen {
                 .flat_map(|entry| Self::format_log_lines(entry, state, inner_width))
                 .collect();
 
-            (visible_lines, total_entries, state.ui_state.log_scroll, max_scroll)
+            (
+                visible_lines,
+                total_entries,
+                state.ui_state.log_scroll,
+                max_scroll,
+            )
         };
 
         // Title shows filter status
@@ -453,7 +464,11 @@ impl LogViewerScreen {
 
     /// Format a log entry into one or more display lines
     /// Returns multiple lines when JSON pretty print is enabled for JSON entries
-    fn format_log_lines(entry: &LogEntry, state: &AppState, available_width: usize) -> Vec<Line<'static>> {
+    fn format_log_lines(
+        entry: &LogEntry,
+        state: &AppState,
+        available_width: usize,
+    ) -> Vec<Line<'static>> {
         let mut prefix_spans = Vec::new();
         let mut prefix_width: usize = 0;
 
@@ -540,7 +555,10 @@ impl LogViewerScreen {
             if result.is_empty() {
                 // Fallback if no JSON content
                 let mut spans = prefix_spans;
-                spans.push(Span::styled(entry.raw.clone(), level_text_style(entry.level)));
+                spans.push(Span::styled(
+                    entry.raw.clone(),
+                    level_text_style(entry.level),
+                ));
                 return vec![Line::from(spans)];
             }
 
@@ -557,7 +575,10 @@ impl LogViewerScreen {
 
             // Truncate message to fit viewport (use safe truncation for UTF-8)
             let display_msg = if message.len() > message_width {
-                format!("{}...", safe_truncate(&message, message_width.saturating_sub(3)))
+                format!(
+                    "{}...",
+                    safe_truncate(&message, message_width.saturating_sub(3))
+                )
             } else {
                 message
             };
@@ -772,8 +793,8 @@ fn colorize_json_line(line: &str) -> Vec<Span<'static>> {
 
     // Track if we're expecting a key (after { or ,)
     let trimmed = line.trim_start();
-    let expecting_key = trimmed.starts_with('"') &&
-        (line.contains(':') || trimmed.ends_with(',') || trimmed.ends_with('{'));
+    let expecting_key = trimmed.starts_with('"')
+        && (line.contains(':') || trimmed.ends_with(',') || trimmed.ends_with('{'));
 
     while let Some(c) = chars.next() {
         match c {
@@ -805,15 +826,19 @@ fn colorize_json_line(line: &str) -> Vec<Span<'static>> {
                     if sc == '"' {
                         break;
                     }
-                    if sc == '\\' {
-                        if let Some(escaped) = chars.next() {
-                            s.push(escaped);
-                        }
+                    if sc == '\\'
+                        && let Some(escaped) = chars.next()
+                    {
+                        s.push(escaped);
                     }
                 }
                 // Check if this is a key (followed by colon)
                 let is_key = chars.clone().any(|c| c == ':');
-                let style = if is_key || expecting_key { key_style } else { string_style };
+                let style = if is_key || expecting_key {
+                    key_style
+                } else {
+                    string_style
+                };
                 spans.push(Span::styled(s, style));
             }
             't' | 'f' => {
@@ -849,7 +874,13 @@ fn colorize_json_line(line: &str) -> Vec<Span<'static>> {
             '0'..='9' | '-' => {
                 let mut num = String::from(c);
                 while let Some(&next) = chars.peek() {
-                    if next.is_ascii_digit() || next == '.' || next == 'e' || next == 'E' || next == '+' || next == '-' {
+                    if next.is_ascii_digit()
+                        || next == '.'
+                        || next == 'e'
+                        || next == 'E'
+                        || next == '+'
+                        || next == '-'
+                    {
                         num.push(chars.next().unwrap());
                     } else {
                         break;

@@ -77,7 +77,9 @@ impl KubeClient {
     /// Returns modified kubeconfig with token if cached, otherwise returns original
     async fn try_with_cached_token(&self, context_name: &str) -> Kubeconfig {
         // Check if this is an EKS cluster
-        let Some(cluster_name) = token_cache::extract_eks_cluster_name(&self.kubeconfig, context_name) else {
+        let Some(cluster_name) =
+            token_cache::extract_eks_cluster_name(&self.kubeconfig, context_name)
+        else {
             return self.kubeconfig.clone();
         };
 
@@ -108,7 +110,11 @@ impl KubeClient {
         };
 
         // Replace the auth info with token-based auth
-        if let Some(auth_info) = kubeconfig.auth_infos.iter_mut().find(|a| a.name == user_name) {
+        if let Some(auth_info) = kubeconfig
+            .auth_infos
+            .iter_mut()
+            .find(|a| a.name == user_name)
+        {
             auth_info.auth_info = Some(AuthInfo {
                 token: Some(token.to_string().into()),
                 ..Default::default()
@@ -167,7 +173,11 @@ impl KubeClient {
             .await
             .context(format!("Failed to list deployments in {}", namespace))?;
 
-        Ok(list.items.into_iter().map(|d| Self::deployment_to_info(d, namespace)).collect())
+        Ok(list
+            .items
+            .into_iter()
+            .map(|d| Self::deployment_to_info(d, namespace))
+            .collect())
     }
 
     /// Fetch a single deployment by name (faster than listing all)
@@ -178,10 +188,10 @@ impl KubeClient {
         name: &str,
     ) -> Result<DeploymentInfo> {
         let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
-        let deploy = deployments
-            .get(name)
-            .await
-            .context(format!("Failed to get deployment '{}' in namespace '{}'", name, namespace))?;
+        let deploy = deployments.get(name).await.context(format!(
+            "Failed to get deployment '{}' in namespace '{}'",
+            name, namespace
+        ))?;
 
         Ok(Self::deployment_to_info(deploy, namespace))
     }
