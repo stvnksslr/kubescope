@@ -138,9 +138,7 @@ impl KubeClient {
             .await
         {
             if output.status.success() {
-                if let Ok(response) =
-                    serde_json::from_slice::<serde_json::Value>(&output.stdout)
-                {
+                if let Ok(response) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
                     if let Some(token) = response
                         .get("status")
                         .and_then(|s| s.get("token"))
