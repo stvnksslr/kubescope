@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.1.3](https://github.com/stvnksslr/kubescope/compare/v0.1.2...v0.1.3) - 2026-01-09
+
+### Added
+- *(keybinding helper)* dismissed with esc like one would expect instead of interacting with ui elements behind the helper window (by @stvnksslr)
+- feat(performance + json parsing bug): (by @stvnksslr)
+
+### Fixed
+- *(performance)* large number of small performance tweaks to keep the ui responsive under high log volume when parsing the json keys (by @stvnksslr)
+
+### Other
+- chore(code format): (by @stvnksslr)
+- bugfix(cred cache): (by @stvnksslr)
+- chore(clippy + formatting): (by @stvnksslr)
+- chore(scaling): (by @stvnksslr)
+
+### Contributors
+
+* @stvnksslr
 ## [0.1.2](https://github.com/stvnksslr/kubescope/compare/v0.1.1...v0.1.2) - 2025-11-30
 
 ### Added
